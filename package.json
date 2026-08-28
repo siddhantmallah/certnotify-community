@@ -1,0 +1,61 @@
+{
+  "name": "certnotify",
+  "version": "0.1.0",
+  "description": "Open-source internet exposure scanner — SSL/TLS, DNS, DNSSEC, email security (SPF/DKIM/DMARC), HTTP security headers, open ports, and DNSBL reputation, from the command line.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "certnotify": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/cli.js"
+  },
+  "keywords": [
+    "security",
+    "ssl",
+    "tls",
+    "dns",
+    "dnssec",
+    "dmarc",
+    "spf",
+    "dkim",
+    "security-headers",
+    "port-scanner",
+    "attack-surface",
+    "devsecops",
+    "cli"
+  ],
+  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/siddhantmallah/certnotify-community.git"
+  },
+  "homepage": "https://www.certnotify.com",
+  "dependencies": {
+    "commander": "^15.0.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  }
+}
