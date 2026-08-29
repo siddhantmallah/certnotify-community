@@ -1,7 +1,7 @@
 {
   "name": "certnotify",
-  "version": "0.1.1",
-  "description": "Open-source internet exposure scanner — SSL/TLS, DNS, DNSSEC, email security (SPF/DKIM/DMARC), HTTP security headers, open ports, DNSBL reputation, and uptime, from the command line.",
+  "version": "0.2.0",
+  "description": "Open-source internet exposure scanner — SSL/TLS, DNS, DNSSEC, email security (SPF/DKIM/DMARC), HTTP security headers, open ports, DNSBL reputation, uptime, DNS-hijack monitoring, defacement detection, WHOIS-privacy monitoring, mixed-content scanning, and subdomain discovery, from the command line.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -28,7 +28,7 @@
     "dev": "tsup --watch",
     "start": "node dist/cli.js",
     "test": "vitest run",
-    "test:unit": "vitest run test/ssrfGuard.test.ts test/headers-grading.test.ts test/score.test.ts",
+    "test:unit": "vitest run test/ssrfGuard.test.ts test/headers-grading.test.ts test/score.test.ts test/state.test.ts test/whoisPrivacy.test.ts test/mixedContent.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.test.json"
   },
   "keywords": [
@@ -44,7 +44,12 @@
     "port-scanner",
     "attack-surface",
     "devsecops",
-    "cli"
+    "cli",
+    "dns-monitoring",
+    "defacement-detection",
+    "subdomain-discovery",
+    "mixed-content",
+    "whois-privacy"
   ],
   "author": "",
   "repository": {

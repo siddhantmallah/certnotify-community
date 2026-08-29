@@ -8,3 +8,8 @@ export { checkPorts } from './ports.js';
 export { checkBlacklist } from './blacklist.js';
 export { checkUptime } from './uptime.js';
 export { assertPublicHostname, isPrivateIP } from './ssrfGuard.js';
+export { checkDnsChanges } from './dnsChanges.js';
+export { checkDefacement } from './defacement.js';
+export { checkWhoisPrivacy, parsePrivacyStatus, extractContactInfo } from './whoisPrivacy.js';
+export { checkMixedContent, scanHtml } from './mixedContent.js';
+export { discoverSubdomains } from './subdomains.js';

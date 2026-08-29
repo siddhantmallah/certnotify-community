@@ -1,5 +1,6 @@
 export * from './scanners/index.js';
 export * from './types.js';
+export { defaultStateDir, readState, writeState, type StateOptions } from './state.js';
 
 import { checkSSL } from './scanners/ssl.js';
 import { checkWhois } from './scanners/whois.js';

@@ -162,3 +162,86 @@ export interface ScanReport {
   blacklist?: BlacklistResult;
   uptime?: UptimeResult | { error: string };
 }
+
+// ── Phase 4: stateful checks (baseline-then-diff, backed by local state) ──
+
+export interface DnsRecordChange {
+  recordType: string;
+  from: string[];
+  to: string[];
+  critical: boolean;
+}
+
+export interface DnsChangesResult {
+  target: string;
+  baseline: boolean;
+  changed: boolean;
+  suspicious: boolean;
+  changes: DnsRecordChange[];
+  checkedAt: string;
+}
+
+export interface DefacementResult {
+  target: string;
+  baseline: boolean;
+  changed: boolean;
+  hash: string;
+  previousHash?: string;
+  checkedAt: string;
+}
+
+export interface WhoisPrivacyContact {
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  organization: string | null;
+}
+
+export interface WhoisPrivacyResult {
+  domain: string;
+  baseline: boolean;
+  privacyEnabled: boolean;
+  privacyProvider: string | null;
+  privacyChanged: boolean;
+  previouslyPrivate: boolean | null;
+  exposedData: WhoisPrivacyContact | null;
+  checkedAt: string;
+  error?: string;
+}
+
+export type MixedContentResourceType = 'image' | 'script' | 'stylesheet' | 'iframe' | 'media' | 'inline';
+
+export interface MixedContentIssue {
+  type: MixedContentResourceType;
+  url: string;
+  fix: string;
+  firstSeenAt: string;
+  occurrences: number;
+}
+
+export interface MixedContentResult {
+  target: string;
+  pagesScanned: number;
+  issuesFound: number;
+  newIssues: number;
+  issues: MixedContentIssue[];
+  error?: string;
+  checkedAt: string;
+}
+
+export interface SubdomainCandidate {
+  host: string;
+  discovered: boolean;
+  source: 'dns-probe' | 'ct-log';
+  isNew: boolean;
+}
+
+export interface SubdomainDiscoveryResult {
+  domain: string;
+  scannedCandidates: number;
+  discoveredCount: number;
+  newCount: number;
+  discovered: SubdomainCandidate[];
+  ctLogQueried: boolean;
+  checkedAt: string;
+}

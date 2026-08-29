@@ -1,6 +1,6 @@
 import type { WhoisResult } from '../types.js';
 
-function cleanDomain(input: string): string {
+export function cleanDomain(input: string): string {
   return String(input || '')
     .replace(/^https?:\/\//, '')
     .replace(/^www\./, '')
@@ -23,6 +23,17 @@ async function fetchJsonWithTimeout(url: string, timeoutMs = 12000): Promise<any
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Raw RDAP lookup, shared with checkWhoisPrivacy() so both features use the
+ * same fetch/timeout/header code without each maintaining a separate RDAP
+ * client. Each still makes its own network request when called
+ * independently — this only dedupes the code, not the request itself.
+ */
+export async function fetchRdapData(domain: string): Promise<any> {
+  const cleaned = cleanDomain(domain);
+  return fetchJsonWithTimeout(`https://rdap.org/domain/${encodeURIComponent(cleaned)}`);
 }
 
 function pickExpiryFromEvents(events: any): string | null {
