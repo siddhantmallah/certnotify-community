@@ -84,7 +84,7 @@ This CLI is the open-source core of [CertNotify](https://www.certnotify.com) —
 
 ## Status
 
-`v0.1.0` — hardened, not yet public. 9 real checks, a `vitest` suite (unit tests for the security-critical logic like the SSRF guard, plus live integration tests against real domains — no mocks anywhere), and GitHub Actions CI across Node 18/20/22. Not yet published to npm and no public GitHub repo yet — that's a deliberate, separately-confirmed next step, not an oversight. See [ROADMAP-OPENSOURCE.md](./ROADMAP-OPENSOURCE.md) for what's planned next (stateful checks like DNS-hijack and defacement monitoring, subdomain discovery, and new domains — secrets scanning, IaC/container scanning, SAST, DAST — built by orchestrating established open-source tools rather than reinventing them).
+`v0.1.0` — public. Live on [npm](https://www.npmjs.com/package/certnotify) and [GitHub](https://github.com/siddhantmallah/certnotify-community). 9 real checks, a `vitest` suite (unit tests for security-critical logic like the SSRF guard, plus live integration tests against real domains — no mocks anywhere). A GitHub Actions CI workflow exists but can't run yet — the repo owner's GitHub account is billing-locked, unrelated to this project; the workflow itself is unaffected and will start running the moment that's resolved. See [ROADMAP-OPENSOURCE.md](./ROADMAP-OPENSOURCE.md) for what's planned next (stateful checks like DNS-hijack and defacement monitoring, subdomain discovery, and new domains — secrets scanning, IaC/container scanning, SAST, DAST — built by orchestrating established open-source tools rather than reinventing them).
 
 ## Development
 
