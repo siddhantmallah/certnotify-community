@@ -108,6 +108,7 @@ export async function checkHeaders(rawDomain: string, opts: { allowPrivate?: boo
       score: 0,
       grade: 'F',
       headers: [],
+      rawHeaders: {},
       error: err.message ?? 'This hostname is not allowed',
     };
   }
@@ -144,7 +145,13 @@ export async function checkHeaders(rawDomain: string, opts: { allowPrivate?: boo
     else if (score >= 45) grade = 'C';
     else if (score >= 30) grade = 'D';
 
-    return { domain, url, finalUrl: res.url, statusCode: res.status, score, grade, headers: results };
+    // Every header the server actually sent, beyond just the ones checked
+    // above — lets a consumer inspect anything else (e.g. Cache-Control)
+    // without a second network round-trip.
+    const rawHeaders: Record<string, string> = {};
+    res.headers.forEach((value, key) => { rawHeaders[key] = value; });
+
+    return { domain, url, finalUrl: res.url, statusCode: res.status, score, grade, headers: results, rawHeaders };
   } catch (err: any) {
     return {
       domain,
@@ -154,6 +161,7 @@ export async function checkHeaders(rawDomain: string, opts: { allowPrivate?: boo
       score: 0,
       grade: 'F',
       headers: [],
+      rawHeaders: {},
       error: err.message ?? 'Failed to check security headers',
     };
   }

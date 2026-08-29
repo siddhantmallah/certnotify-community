@@ -69,6 +69,8 @@ describe('checkDnssec (live)', () => {
     const result = await checkDnssec(DNSSEC_TARGET);
     expect(result.status).toBe('signed-valid');
     expect(result.dnssecValid).toBe(true);
+    expect(typeof result.rcode.dnskey).not.toBe('undefined');
+    expect(typeof result.rcode.ds).not.toBe('undefined');
   });
 });
 
@@ -89,6 +91,7 @@ describe('checkHeaders (live)', () => {
     expect(result.headers).toHaveLength(10);
     expect(result.score).toBeGreaterThanOrEqual(0);
     expect(result.score).toBeLessThanOrEqual(100);
+    expect(Object.keys(result.rawHeaders).length).toBeGreaterThan(0);
   });
 });
 

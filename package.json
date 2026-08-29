@@ -1,6 +1,6 @@
 {
   "name": "certnotify",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Open-source internet exposure scanner — SSL/TLS, DNS, DNSSEC, email security (SPF/DKIM/DMARC), HTTP security headers, open ports, DNSBL reputation, and uptime, from the command line.",
   "license": "AGPL-3.0-or-later",
   "type": "module",

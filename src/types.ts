@@ -59,6 +59,7 @@ export interface DnssecResult {
   nsRecords: string[];
   dnskeyCount: number;
   dsCount: number;
+  rcode: { dnskey: number | null; ds: number | null };
   explanation: string;
   error?: string;
 }
@@ -92,6 +93,7 @@ export interface HeadersResult {
   score: number;
   grade: string;
   headers: HeaderCheckResult[];
+  rawHeaders: Record<string, string>;
   error?: string;
 }
 

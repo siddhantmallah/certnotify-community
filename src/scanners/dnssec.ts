@@ -77,6 +77,10 @@ export async function checkDnssec(rawDomain: string): Promise<DnssecResult> {
     nsRecords,
     dnskeyCount: dnskeyRecords.length,
     dsCount: dsRecords.length,
+    rcode: {
+      dnskey: dnskey?.Status ?? null,
+      ds: ds?.Status ?? null,
+    },
     explanation: EXPLANATIONS[status],
   };
 }
