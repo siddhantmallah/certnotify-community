@@ -9,6 +9,7 @@ import { checkEmail } from './scanners/email.js';
 import { checkHeaders } from './scanners/headers.js';
 import { checkPorts } from './scanners/ports.js';
 import { checkBlacklist } from './scanners/blacklist.js';
+import { checkUptime } from './scanners/uptime.js';
 import type { CheckName, ScanReport } from './types.js';
 import { ALL_CHECKS } from './types.js';
 
@@ -63,6 +64,14 @@ export async function scan(target: string, options: ScanOptions = {}): Promise<S
   }
   if (checks.includes('blacklist')) {
     tasks.push(checkBlacklist(target).then((r) => { report.blacklist = r; }));
+  }
+  if (checks.includes('uptime')) {
+    tasks.push(
+      checkUptime(target, { allowPrivate }).then(
+        (r) => { report.uptime = r; },
+        (e) => { report.uptime = { error: e.message }; }
+      )
+    );
   }
 
   await Promise.all(tasks);

@@ -1,11 +1,11 @@
 {
   "name": "certnotify",
   "version": "0.1.0",
-  "description": "Open-source internet exposure scanner — SSL/TLS, DNS, DNSSEC, email security (SPF/DKIM/DMARC), HTTP security headers, open ports, and DNSBL reputation, from the command line.",
+  "description": "Open-source internet exposure scanner — SSL/TLS, DNS, DNSSEC, email security (SPF/DKIM/DMARC), HTTP security headers, open ports, DNSBL reputation, and uptime, from the command line.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.mjs",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
     "certnotify": "./dist/cli.js"
@@ -16,8 +16,8 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     }
   },
   "engines": {
@@ -26,7 +26,10 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:unit": "vitest run test/ssrfGuard.test.ts test/headers-grading.test.ts test/score.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json"
   },
   "keywords": [
     "security",
@@ -56,6 +59,7 @@
   "devDependencies": {
     "@types/node": "^26.4.0",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   }
 }

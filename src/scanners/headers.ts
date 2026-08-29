@@ -62,7 +62,7 @@ const SECURITY_HEADERS: { name: string; description: string; recommendation: str
   },
 ];
 
-function gradeHeader(name: string, value: string | null): HeaderGrade {
+export function gradeHeader(name: string, value: string | null): HeaderGrade {
   if (!value) return 'bad';
   const v = value.toLowerCase();
   switch (name.toLowerCase()) {

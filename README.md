@@ -21,6 +21,7 @@ Security Score: 84/100
 ✓ Security headers — grade B (70/100)
 ✓ Port scan — no unexpected open ports (checked 15)
 ✓ Blacklist check — clean (0/7 lists)
+✓ Uptime — Online (up), 210ms (Good)
 ```
 
 ## What it checks
@@ -35,6 +36,7 @@ Security Score: 84/100
 | `headers` | HTTP security headers (HSTS, CSP, X-Frame-Options, and 7 more), graded not just presence-checked |
 | `ports` | TCP-connect probe against 15 well-known ports (databases, admin panels, dev servers) |
 | `blacklist` | Cross-references your domain's IP against 7 public DNSBL feeds |
+| `uptime` | HTTPS check with HTTP fallback — status, response time, performance rating, redirects |
 
 Every check uses only Node's built-in `tls`/`dns`/`net` modules or free, keyless public services (RDAP registries, Cloudflare DNS-over-HTTPS, public DNSBL zones) — no paid API keys, no telemetry, no phone-home.
 
@@ -70,7 +72,7 @@ import { scan } from 'certnotify';
 const report = await scan('example.com', { checks: ['ssl', 'headers'] });
 ```
 
-Each individual scanner (`checkSSL`, `checkWhois`, `checkDns`, `checkDnssec`, `checkEmail`, `checkHeaders`, `checkPorts`, `checkBlacklist`) is also exported directly.
+Each individual scanner (`checkSSL`, `checkWhois`, `checkDns`, `checkDnssec`, `checkEmail`, `checkHeaders`, `checkPorts`, `checkBlacklist`, `checkUptime`) is also exported directly.
 
 ## Relationship to CertNotify Cloud
 
@@ -82,4 +84,13 @@ This CLI is the open-source core of [CertNotify](https://www.certnotify.com) —
 
 ## Status
 
-`v0.1.0` — early. Extracted from CertNotify's production scanning logic, but not yet published to npm or hardened with a full test suite. See [ROADMAP-OPENSOURCE.md](./ROADMAP-OPENSOURCE.md) for what's planned next (stateful checks like DNS-hijack and defacement monitoring, subdomain discovery, and new domains — secrets scanning, IaC/container scanning, SAST, DAST — built by orchestrating established open-source tools rather than reinventing them).
+`v0.1.0` — hardened, not yet public. 9 real checks, a `vitest` suite (unit tests for the security-critical logic like the SSRF guard, plus live integration tests against real domains — no mocks anywhere), and GitHub Actions CI across Node 18/20/22. Not yet published to npm and no public GitHub repo yet — that's a deliberate, separately-confirmed next step, not an oversight. See [ROADMAP-OPENSOURCE.md](./ROADMAP-OPENSOURCE.md) for what's planned next (stateful checks like DNS-hijack and defacement monitoring, subdomain discovery, and new domains — secrets scanning, IaC/container scanning, SAST, DAST — built by orchestrating established open-source tools rather than reinventing them).
+
+## Development
+
+```bash
+npm install
+npm run typecheck   # tsc --noEmit across src/ and test/
+npm run build       # tsup — emits CJS + ESM + .d.ts to dist/
+npm test            # vitest — unit tests + live integration tests against real domains
+```

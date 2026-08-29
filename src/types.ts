@@ -1,6 +1,6 @@
-export type CheckName = 'ssl' | 'whois' | 'dns' | 'dnssec' | 'email' | 'headers' | 'ports' | 'blacklist';
+export type CheckName = 'ssl' | 'whois' | 'dns' | 'dnssec' | 'email' | 'headers' | 'ports' | 'blacklist' | 'uptime';
 
-export const ALL_CHECKS: CheckName[] = ['ssl', 'whois', 'dns', 'dnssec', 'email', 'headers', 'ports', 'blacklist'];
+export const ALL_CHECKS: CheckName[] = ['ssl', 'whois', 'dns', 'dnssec', 'email', 'headers', 'ports', 'blacklist', 'uptime'];
 
 export interface SSLResult {
   hostname: string;
@@ -130,6 +130,23 @@ export interface BlacklistResult {
   error?: string;
 }
 
+export type UptimeStatus = 'up' | 'degraded' | 'down';
+
+export interface UptimeResult {
+  domain: string;
+  status: UptimeStatus;
+  online: boolean;
+  statusCode: number;
+  statusLabel: string;
+  responseTimeMs: number;
+  performance: 'Excellent' | 'Good' | 'Fair' | 'Slow';
+  protocol: 'https' | 'http' | 'unreachable';
+  finalUrl: string | null;
+  redirected: boolean;
+  server: string | null;
+  contentType: string | null;
+}
+
 export interface ScanReport {
   target: string;
   scannedAt: string;
@@ -141,4 +158,5 @@ export interface ScanReport {
   headers?: HeadersResult;
   ports?: PortsResult | { error: string };
   blacklist?: BlacklistResult;
+  uptime?: UptimeResult | { error: string };
 }

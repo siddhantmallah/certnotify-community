@@ -11,12 +11,13 @@ import { checkEmail } from './scanners/email.js';
 import { checkHeaders } from './scanners/headers.js';
 import { checkPorts } from './scanners/ports.js';
 import { checkBlacklist } from './scanners/blacklist.js';
+import { checkUptime } from './scanners/uptime.js';
 
 const program = new Command();
 
 program
   .name('certnotify')
-  .description('Open-source internet exposure scanner — SSL/TLS, DNS, DNSSEC, email security, HTTP headers, open ports, and DNSBL reputation.')
+  .description('Open-source internet exposure scanner — SSL/TLS, DNS, DNSSEC, email security, HTTP headers, open ports, DNSBL reputation, and uptime.')
   .version('0.1.0');
 
 program
@@ -75,5 +76,6 @@ registerSingleCheck('email', (t) => checkEmail(t), false);
 registerSingleCheck('headers', (t, o) => checkHeaders(t, o), true);
 registerSingleCheck('ports', (t, o) => checkPorts(t, o), true);
 registerSingleCheck('blacklist', (t) => checkBlacklist(t), false);
+registerSingleCheck('uptime', (t, o) => checkUptime(t, o), true);
 
 program.parseAsync(process.argv);

@@ -95,6 +95,15 @@ export function formatText(report: ScanReport): string {
     }
   }
 
+  if (report.uptime) {
+    if ('error' in report.uptime) {
+      lines.push(`${statusIcon(false)} Uptime — ${report.uptime.error}`);
+    } else {
+      const u = report.uptime;
+      lines.push(`${statusIcon(u.status === 'up')} Uptime — ${u.statusLabel} (${u.status}), ${u.responseTimeMs}ms (${u.performance})`);
+    }
+  }
+
   if (report.dns) {
     lines.push('');
     lines.push(pc.dim('DNS records:'));

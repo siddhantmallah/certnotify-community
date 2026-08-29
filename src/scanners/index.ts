@@ -6,4 +6,5 @@ export { checkEmail } from './email.js';
 export { checkHeaders } from './headers.js';
 export { checkPorts } from './ports.js';
 export { checkBlacklist } from './blacklist.js';
+export { checkUptime } from './uptime.js';
 export { assertPublicHostname, isPrivateIP } from './ssrfGuard.js';

@@ -32,6 +32,10 @@ export function compositeScore(report: ScanReport): number | null {
     const value = report.blacklist.reputation === 'clean' ? 100 : report.blacklist.reputation === 'suspicious' ? 50 : report.blacklist.reputation === 'blacklisted' ? 0 : 100;
     weights.push({ value, weight: 15 });
   }
+  if (report.uptime && !('error' in report.uptime)) {
+    const value = report.uptime.status === 'up' ? 100 : report.uptime.status === 'degraded' ? 50 : 0;
+    weights.push({ value, weight: 10 });
+  }
 
   if (weights.length === 0) return null;
 
