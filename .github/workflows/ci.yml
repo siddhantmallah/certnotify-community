@@ -1,10 +1,28 @@
 name: CI
 
+# Manual dispatch only, deliberately.
+#
+# The GitHub account this repository lives under is billing-locked, which is
+# unrelated to this project and is not being resolved. Every triggered run
+# therefore completes as "failure" in about two seconds with no runner ever
+# assigned and no step executed. Left on push/pull_request, that paints the
+# commit history and the README badge red with failures that say nothing about
+# the code — which, on a security project, actively misleads anyone deciding
+# whether to trust it.
+#
+# The workflow itself is correct and unchanged. To restore automatic CI once
+# the billing lock clears, replace the trigger below with:
+#
+#   on:
+#     push:
+#       branches: [main]
+#     pull_request:
+#       branches: [main]
+#
+# Until then the gate is `npm run verify` locally, which runs exactly the same
+# three steps this workflow does. See CONTRIBUTING.md.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build-and-test:

@@ -1,0 +1,13 @@
+node_modules
+dist
+test
+.git
+.github
+*.md
+!README.md
+.gitignore
+vitest.config.ts
+tsconfig.test.json
+action.yml
+Dockerfile
+.dockerignore

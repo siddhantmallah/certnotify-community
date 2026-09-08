@@ -1,0 +1,12 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/siddhantmallah/certnotify-community/blob/main/SECURITY.md
+    about: >
+      Do not open a public issue for anything exploitable — email
+      security@certnotify.com instead. This link explains what is in scope.
+  - name: CertNotify Cloud (the hosted product)
+    url: https://www.certnotify.com
+    about: >
+      Questions about billing, the dashboard, continuous monitoring or team
+      alerting belong with the hosted product, not this repository.

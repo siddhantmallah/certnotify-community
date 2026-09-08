@@ -2,7 +2,7 @@ export { checkSSL } from './ssl.js';
 export { checkWhois } from './whois.js';
 export { checkDns, RECORD_TYPES } from './dns.js';
 export { checkDnssec } from './dnssec.js';
-export { checkEmail } from './email.js';
+export { checkEmail, evaluateSpf } from './email.js';
 export { checkHeaders } from './headers.js';
 export { checkPorts } from './ports.js';
 export { checkBlacklist } from './blacklist.js';

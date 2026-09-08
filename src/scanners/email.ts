@@ -13,6 +13,50 @@ async function getTxt(host: string): Promise<string[]> {
 const DKIM_SELECTORS = ['google', 'default', 'mail', 'dkim', 'k1', 'selector1', 'selector2', 'mandrill', 'sendgrid'];
 
 /**
+ * Evaluate a domain's SPF posture from its raw apex TXT records.
+ *
+ * Split out from the network call so the rules can be unit-tested against
+ * plain arrays — the interesting cases here are all parsing, not DNS.
+ *
+ * RFC 7208 §3.2: the `v=spf1` version tag is case-insensitive.
+ * RFC 7208 §4.5: a domain publishing MORE THAN ONE SPF record is a permanent
+ * error. A receiver must not pick one of them — it fails SPF for the domain
+ * entirely. Taking the first match (what this checker used to do) reports a
+ * comprehensively broken domain as healthy, which is the most consequential
+ * way an SPF check can be wrong: worse than no record at all, and invisible
+ * to the owner precisely because most checkers only look at the first hit.
+ */
+export function evaluateSpf(txtRecords: string[]): EmailSecurityResult['spf'] {
+  const records = txtRecords.filter((r) => /^v=spf1(\s|$)/i.test(r.trim()));
+  const record = records[0] ?? null;
+  const multipleRecords = records.length > 1;
+
+  if (multipleRecords) {
+    return {
+      record,
+      records,
+      valid: false,
+      mechanism: null,
+      multipleRecords: true,
+      error: `permerror: ${records.length} SPF records published — RFC 7208 requires exactly one, so receivers fail SPF outright`,
+    };
+  }
+
+  if (!record) {
+    return { record: null, records, valid: false, mechanism: null, multipleRecords: false, error: null };
+  }
+
+  return {
+    record,
+    records,
+    valid: true,
+    mechanism: record.match(/\s([+\-~?]all)/)?.[1] ?? null,
+    multipleRecords: false,
+    error: null,
+  };
+}
+
+/**
  * Email authentication posture: SPF, DMARC, and a best-effort DKIM probe
  * across common selectors (DKIM has no discovery mechanism — the selector
  * is chosen by the sending mail provider, so this can miss custom selectors).
@@ -39,14 +83,7 @@ export async function checkEmail(rawDomain: string): Promise<EmailSecurityResult
     dmarcRua = ruaMatch?.[1]?.trim() ?? null;
   }
 
-  const spfRaw = domainTxtRecords.find((r) => r.startsWith('v=spf1')) ?? null;
-  let spfPass = false;
-  let spfMechanism: string | null = null;
-  if (spfRaw) {
-    spfPass = true;
-    const allMatch = spfRaw.match(/\s([+\-~?]all)/);
-    spfMechanism = allMatch?.[1] ?? null;
-  }
+  const spf = evaluateSpf(domainTxtRecords);
 
   let dkimSelector: string | null = null;
   let dkimRecord: string | null = null;
@@ -63,9 +100,9 @@ export async function checkEmail(rawDomain: string): Promise<EmailSecurityResult
   );
 
   let score = 0;
-  if (spfPass) score += 25;
-  if (spfMechanism === '-all') score += 10;
-  else if (spfMechanism === '~all') score += 5;
+  if (spf.valid) score += 25;
+  if (spf.mechanism === '-all') score += 10;
+  else if (spf.mechanism === '~all') score += 5;
   if (dmarcRaw) score += 25;
   if (dmarcPolicy === 'quarantine') score += 15;
   else if (dmarcPolicy === 'reject') score += 20;
@@ -75,8 +112,14 @@ export async function checkEmail(rawDomain: string): Promise<EmailSecurityResult
     score >= 90 ? 'A+' : score >= 75 ? 'A' : score >= 55 ? 'B' : score >= 35 ? 'C' : score >= 15 ? 'D' : 'F';
 
   const recommendations: string[] = [];
-  if (!spfPass) recommendations.push('Add an SPF TXT record to authorize which servers can send email for your domain.');
-  if (spfPass && spfMechanism !== '-all' && spfMechanism !== '~all')
+  if (spf.multipleRecords)
+    recommendations.push(
+      `Remove ${spf.records.length - 1} of your ${spf.records.length} SPF records — a domain may publish only one. ` +
+        'Merge every `include:` into a single record; until you do, SPF fails for all of your mail.'
+    );
+  if (!spf.valid && !spf.multipleRecords)
+    recommendations.push('Add an SPF TXT record to authorize which servers can send email for your domain.');
+  if (spf.valid && spf.mechanism !== '-all' && spf.mechanism !== '~all')
     recommendations.push('End your SPF record with -all (fail) or ~all (softfail) to reject unauthorized senders.');
   if (!dmarcRaw) recommendations.push(`Add a DMARC record at _dmarc.${domain} to protect against email spoofing.`);
   if (dmarcPolicy === 'none')
@@ -86,7 +129,7 @@ export async function checkEmail(rawDomain: string): Promise<EmailSecurityResult
 
   return {
     domain,
-    spf: { record: spfRaw, valid: spfPass, mechanism: spfMechanism },
+    spf,
     dmarc: { record: dmarcRaw, policy: dmarcPolicy, pct: dmarcPct, rua: dmarcRua },
     dkim: { selector: dkimSelector, record: dkimRecord },
     score,

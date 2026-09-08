@@ -66,7 +66,19 @@ export interface DnssecResult {
 
 export interface EmailSecurityResult {
   domain: string;
-  spf: { record: string | null; valid: boolean; mechanism: string | null };
+  spf: {
+    /** The first published SPF record, for display. Null when none exists. */
+    record: string | null;
+    /** Every `v=spf1` record found. More than one is itself a fatal error. */
+    records: string[];
+    /** False when there is no record AND when there is more than one. */
+    valid: boolean;
+    mechanism: string | null;
+    /** RFC 7208 forbids publishing more than one SPF record for a domain. */
+    multipleRecords: boolean;
+    /** Human-readable reason SPF cannot evaluate, or null when it can. */
+    error: string | null;
+  };
   dmarc: { record: string | null; policy: 'none' | 'quarantine' | 'reject' | null; pct: number; rua: string | null };
   dkim: { selector: string | null; record: string | null };
   score: number;

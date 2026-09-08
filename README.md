@@ -75,6 +75,42 @@ Or run it once without installing:
 npx certnotify scan example.com
 ```
 
+### Docker
+
+```bash
+docker build -t certnotify .
+docker run --rm certnotify scan example.com
+```
+
+The stateful checks keep their baseline in `~/.certnotify/state`, which does not
+survive a container exiting. Mount a volume to make them useful across runs:
+
+```bash
+docker run --rm -v certnotify-state:/home/certnotify/.certnotify \
+  certnotify dns-monitor example.com
+```
+
+### GitHub Actions
+
+```yaml
+- uses: siddhantmallah/certnotify-community@main
+  with:
+    target: example.com
+    fail-on: 70          # fail the job below 70/100; omit to only record
+```
+
+| Input | Default | |
+|---|---|---|
+| `target` | — | Domain or host to scan (required) |
+| `checks` | all | Comma-separated subset, e.g. `ssl,headers,email` |
+| `fail-on` | never | Fail the job when the composite score is below this |
+| `version` | `latest` | Which `certnotify` release to run |
+| `json-path` | `certnotify-report.json` | Where the JSON report is written |
+| `summary` | `true` | Write the readable report to the job summary |
+
+Outputs `score` and `json-path`. The scan runs once and the job summary is
+rendered from that same result rather than scanning the target twice.
+
 ## Usage
 
 ```bash
@@ -113,15 +149,40 @@ This CLI is the open-source core of [CertNotify](https://www.certnotify.com) —
 
 [GNU AGPL v3.0](./LICENSE) or later. If you run a modified version of this project as a network service, you must make your modified source available to users of that service — this is what keeps the project from being quietly forked into a closed competing product.
 
+## Contributing
+
+[CONTRIBUTING.md](./CONTRIBUTING.md) covers the setup, how to add a check, and
+why there are no mocks in the test suite. Security issues go to
+<security@certnotify.com> — see [SECURITY.md](./SECURITY.md).
+
+A false positive or false negative is the most useful bug report this project
+can get; there is an issue template for exactly that.
+
 ## Changelog
 
+- **0.3.0** — **`email` now detects multiple SPF records.** A domain publishing
+  more than one `v=spf1` record is a permanent error under RFC 7208 §4.5:
+  receivers do not pick one, they fail SPF for the domain outright. This checker
+  previously took the first match and reported such a domain as healthy — the
+  worst way an SPF check can be wrong, since the owner's mail is failing
+  authentication and every first-match tool tells them it is fine. `spf` now
+  carries `records`, `multipleRecords` and `error`, the version tag is matched
+  case-insensitively per §3.2, and `spf.valid` is false when duplicates make the
+  policy unevaluable. Also: `--json` output now includes the composite `score`
+  (it was only ever printed in the human-readable report, which made
+  threshold-gating a CI build unnecessarily awkward), plus a `Dockerfile` and a
+  GitHub Action.
 - **0.2.0** — 5 new stateful checks that compare against a local baseline: `dns-monitor` (DNS-hijack detection), `defacement` (homepage content-fingerprint monitoring), `whois-privacy` (registrant privacy-protection monitoring), `mixed-content` (HTTP-in-HTTPS resource scanning), and `subdomains` (Certificate Transparency log + brute-force discovery). Baselines live in `~/.certnotify/state` by default, overridable with `--state-dir`. All additive, no breaking changes.
 - **0.1.1** — `checkDnssec` now returns `rcode: { dnskey, ds }` (the raw DoH response codes); `checkHeaders` now returns `rawHeaders` (every header the server sent, not just the 10 checked) so a consumer can inspect anything else — e.g. `Cache-Control` — without a second request. Both are additive, no breaking changes.
 - **0.1.0** — Initial release: 9 checks (ssl, whois, dns, dnssec, email, headers, ports, blacklist, uptime), CLI + library.
 
 ## Status
 
-`v0.2.0` — public. Live on [npm](https://www.npmjs.com/package/certnotify) and [GitHub](https://github.com/siddhantmallah/certnotify-community). 14 real checks (9 stateless + 5 stateful), a `vitest` suite (unit tests for security-critical/pure logic like the SSRF guard and the new stateful checks' parsing logic, plus live integration tests against real domains — no mocks anywhere). A GitHub Actions CI workflow exists but can't run yet — the repo owner's GitHub account is billing-locked, unrelated to this project; the workflow itself is unaffected and will start running the moment that's resolved. See [ROADMAP-OPENSOURCE.md](./ROADMAP-OPENSOURCE.md) for what's planned next (new domains — secrets scanning, IaC/container scanning, SAST, DAST — built by orchestrating established open-source tools rather than reinventing them).
+`v0.3.0` — public. Live on [npm](https://www.npmjs.com/package/certnotify) and [GitHub](https://github.com/siddhantmallah/certnotify-community). 14 real checks (9 stateless + 5 stateful), a `vitest` suite (unit tests for security-critical/pure logic like the SSRF guard, SPF parsing and the stateful checks' parsing logic, plus live integration tests against real domains — no mocks anywhere), distributed as a CLI, a library, a Docker image and a GitHub Action.
+
+The CI workflow is set to manual dispatch rather than running on push: the repo owner's GitHub account is billing-locked (unrelated to this project and not being resolved), so every triggered run fails in two seconds without a runner ever starting. Rather than paint the history red with failures that say nothing about the code, the workflow is parked and `npm run verify` — the same typecheck, build and test steps — is the gate. Flipping the trigger back is a two-line change, documented in the workflow file.
+
+See [ROADMAP-OPENSOURCE.md](./ROADMAP-OPENSOURCE.md) for what's planned next (new domains — secrets scanning, IaC/container scanning, SAST, DAST — built by orchestrating established open-source tools rather than reinventing them).
 
 ## Development
 

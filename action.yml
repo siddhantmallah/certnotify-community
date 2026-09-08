@@ -1,0 +1,127 @@
+name: 'CertNotify Scan'
+description: 'Open-source internet exposure scan — SSL/TLS, DNS, DNSSEC, email security, HTTP headers, open ports and DNSBL reputation. No account, no API key.'
+author: 'CertNotify'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  target:
+    description: 'Domain or host to scan, e.g. example.com'
+    required: true
+  checks:
+    description: >
+      Comma-separated subset of checks to run (ssl, whois, dns, dnssec, email,
+      headers, ports, blacklist, uptime). Empty runs all of them.
+    required: false
+    default: ''
+  fail-on:
+    description: >
+      Fail the job when the composite score falls below this number (0-100).
+      Empty never fails the job on score, which is the right setting when you
+      are only recording results.
+    required: false
+    default: ''
+  version:
+    description: 'Version of the certnotify package to run.'
+    required: false
+    default: 'latest'
+  json-path:
+    description: 'Where to write the machine-readable report.'
+    required: false
+    default: 'certnotify-report.json'
+  summary:
+    description: 'Write the human-readable report to the GitHub job summary.'
+    required: false
+    default: 'true'
+
+outputs:
+  score:
+    description: 'Composite security score out of 100, or empty if no check produced one.'
+    value: ${{ steps.scan.outputs.score }}
+  json-path:
+    description: 'Path to the JSON report written by this action.'
+    value: ${{ steps.scan.outputs.json-path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: scan
+      shell: bash
+      env:
+        # Passed through the environment rather than interpolated into the
+        # script: an input containing a quote or a backtick must never be able
+        # to become part of the command being run.
+        CN_TARGET: ${{ inputs.target }}
+        CN_CHECKS: ${{ inputs.checks }}
+        CN_VERSION: ${{ inputs.version }}
+        CN_JSON_PATH: ${{ inputs.json-path }}
+        CN_SUMMARY: ${{ inputs.summary }}
+      run: |
+        set -euo pipefail
+
+        args=(scan "$CN_TARGET" --json)
+        if [ -n "$CN_CHECKS" ]; then
+          args+=(--only "$CN_CHECKS")
+        fi
+
+        echo "Scanning $CN_TARGET with certnotify@$CN_VERSION"
+        npx --yes "certnotify@$CN_VERSION" "${args[@]}" > "$CN_JSON_PATH"
+
+        score=$(node -e '
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+          process.stdout.write(report.score == null ? "" : String(report.score));
+        ' "$CN_JSON_PATH")
+
+        echo "score=$score" >> "$GITHUB_OUTPUT"
+        echo "json-path=$CN_JSON_PATH" >> "$GITHUB_OUTPUT"
+
+        if [ "$CN_SUMMARY" = "true" ]; then
+          {
+            echo "## CertNotify scan — \`$CN_TARGET\`"
+            echo
+            echo '```'
+            # A second run would double the scan traffic against the target, so
+            # the readable report is rendered from the JSON already fetched.
+            node -e '
+              const fs = require("fs");
+              const r = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+              if (r.score != null) console.log(`Security Score: ${r.score}/100\n`);
+              for (const [check, result] of Object.entries(r)) {
+                if (!result || typeof result !== "object") continue;
+                if (result.error) { console.log(`✗ ${check}: ${result.error}`); continue; }
+                const grade = result.grade ? ` — grade ${result.grade}` : "";
+                const sub = typeof result.score === "number" ? ` (${result.score}/100)` : "";
+                console.log(`• ${check}${grade}${sub}`);
+              }
+            ' "$CN_JSON_PATH"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - id: gate
+      shell: bash
+      if: ${{ inputs.fail-on != '' }}
+      env:
+        CN_SCORE: ${{ steps.scan.outputs.score }}
+        CN_FAIL_ON: ${{ inputs.fail-on }}
+        CN_TARGET: ${{ inputs.target }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "$CN_SCORE" ]; then
+          # No score means no check produced one — every check errored, or the
+          # subset chosen has no scored check in it. Silently passing a gate
+          # that never actually evaluated anything is the wrong default.
+          echo "::error::fail-on was set to $CN_FAIL_ON but the scan produced no score for $CN_TARGET."
+          exit 1
+        fi
+
+        if [ "$CN_SCORE" -lt "$CN_FAIL_ON" ]; then
+          echo "::error::CertNotify score for $CN_TARGET is $CN_SCORE, below the required $CN_FAIL_ON."
+          exit 1
+        fi
+
+        echo "CertNotify score for $CN_TARGET is $CN_SCORE (threshold $CN_FAIL_ON)."

@@ -1,0 +1,75 @@
+name: Propose a new check
+description: Suggest a security check the scanner should perform
+title: '[check] '
+labels: ['new-check']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before writing this up, the two hard requirements are worth knowing:
+
+        1. **It must work with no account and no API key.** Node built-ins or
+           free public services only. A check that needs a paid API cannot go
+           in this package.
+        2. **It must be able to say "I don't know".** A check that has to guess
+           when data is missing does not belong here — a confidently wrong
+           security result is worse than no result.
+
+        Checks already planned are in
+        [ROADMAP-OPENSOURCE.md](../blob/main/ROADMAP-OPENSOURCE.md) — secrets
+        scanning, IaC and container scanning, SAST and DAST are all on the list
+        already, to be built by wrapping established tools.
+
+  - type: input
+    id: name
+    attributes:
+      label: What should the check do?
+      placeholder: Detect MTA-STS policy and TLS-RPT reporting for a domain
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: What problem does it catch?
+      description: What goes wrong in the real world if nobody checks this?
+    validations:
+      required: true
+
+  - type: textarea
+    id: how
+    attributes:
+      label: How would it determine the answer?
+      description: >
+        Which protocol, record, endpoint or file would it read, and what makes
+        a result pass or fail? Link the RFC or specification if there is one.
+    validations:
+      required: true
+
+  - type: input
+    id: data-source
+    attributes:
+      label: Data source
+      description: >
+        Which free, keyless source provides this? (DNS, a well-known URI, a
+        public registry, a TLS handshake…)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: requirements
+    attributes:
+      label: Requirements
+      options:
+        - label: This works with no account and no API key
+          required: true
+        - label: This can report "unknown" rather than guessing when data is missing
+          required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: A domain that would fail this check
+      description: >
+        Optional, but extremely useful — it gives the implementation something
+        real to test against.

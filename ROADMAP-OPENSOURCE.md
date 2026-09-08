@@ -12,6 +12,14 @@ This package (`certnotify`, the CLI/library) is Phase 1 of a larger plan to grow
 6. **Phase 6** — CertNotify Cloud only, proprietary: a correlation engine (turns "you have 40 findings" into "this one is actually exploitable and internet-facing"), an AI security analyst, and compliance-framework mapping (ISO 27001, SOC 2, PCI DSS, GDPR).
 7. **Phase 7** — Positioning/marketing layer (new tagline, homepage restructure, GitHub as a growth channel) — deliberately last. Don't market capability that doesn't exist yet.
 
+## Distribution surfaces (shipped in 0.3.0)
+
+The engine reaches people through four surfaces now, not one: **npm** (CLI +
+library), **Docker** (`Dockerfile`, non-root, with a volume for the stateful
+checks' baselines), and a **GitHub Action** (`action.yml` — a composite action
+with a `fail-on` score threshold so a scan can gate a build). A self-hosted HTTP
+API and dashboard remain unbuilt and are the obvious next distribution step.
+
 ## What stays open vs. what's commercial
 
 Open (this package, forever): the scanners themselves — SSL/TLS, DNS, DNSSEC, email, headers, ports, blacklist, uptime, the stateful local checks (DNS-hijack, defacement, WHOIS-privacy, mixed-content), subdomain discovery, and (later) secrets/IaC/container/SAST/DAST orchestration.

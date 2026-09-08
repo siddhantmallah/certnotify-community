@@ -1,0 +1,87 @@
+name: Incorrect finding
+description: A check reported something wrong — a false positive, a false negative, or a misleading grade
+title: '[finding] '
+labels: ['incorrect-finding']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Wrong output from a security scanner is the most important kind of bug
+        this project can have, so thank you for reporting it.
+
+        Please include the real domain if you can. A finding that cannot be
+        reproduced against live DNS or a live TLS handshake is very hard to fix.
+        If the domain is private, say so and describe the configuration instead.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of wrong?
+      options:
+        - False positive — it flagged something that is actually fine
+        - False negative — it missed a real problem
+        - Misleading — technically true but reads the wrong way
+        - Wrong grade or score
+    validations:
+      required: true
+
+  - type: dropdown
+    id: check
+    attributes:
+      label: Which check?
+      options:
+        - ssl
+        - whois
+        - dns
+        - dnssec
+        - email (SPF/DKIM/DMARC)
+        - headers
+        - ports
+        - blacklist
+        - uptime
+        - dns-monitor
+        - defacement
+        - whois-privacy
+        - mixed-content
+        - subdomains
+        - composite score
+    validations:
+      required: true
+
+  - type: input
+    id: target
+    attributes:
+      label: Domain or host scanned
+      placeholder: example.com
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: What certnotify reported
+      description: >
+        Paste the output. `--json` is more useful than the formatted report
+        because it carries every field.
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What it should have reported, and how you know
+      description: >
+        The more specific the better — the relevant RFC section, another tool's
+        result, or the actual DNS/TLS configuration.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `certnotify --version`
+      placeholder: 0.3.0
+    validations:
+      required: true

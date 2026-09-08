@@ -11,8 +11,15 @@ function warnIcon(): string {
   return pc.yellow('⚠');
 }
 
+/**
+ * The composite score is included alongside the report here, but deliberately
+ * not on `ScanReport` itself: `scan()` returns raw findings, and callers that
+ * want a number call `compositeScore()`. A CI consumer reading `--json` off
+ * stdout has no such option, and threshold-gating a build is the main reason
+ * to use `--json` at all — so the CLI's JSON carries it.
+ */
 export function formatJson(report: ScanReport): string {
-  return JSON.stringify(report, null, 2);
+  return JSON.stringify({ ...report, score: compositeScore(report) }, null, 2);
 }
 
 export function formatText(report: ScanReport): string {
@@ -58,6 +65,11 @@ export function formatText(report: ScanReport): string {
   if (report.email) {
     const e = report.email;
     lines.push(`${statusIcon(e.score >= 55)} Email security (SPF/DKIM/DMARC) — grade ${e.grade} (${e.score}/100)`);
+    // A grade drop alone buries this: multiple SPF records means every
+    // receiver hard-fails SPF, which is worse than having no record at all.
+    if (e.spf.multipleRecords) {
+      lines.push(`  ${pc.red('✗')} ${e.spf.records.length} SPF records published — receivers fail SPF outright (RFC 7208 permerror)`);
+    }
     for (const rec of e.recommendations) lines.push(`  ${warnIcon()} ${rec}`);
   }
 
