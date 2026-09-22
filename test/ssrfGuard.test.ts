@@ -71,3 +71,43 @@ describe('assertPublicHostname', () => {
     await expect(assertPublicHostname('169.254.169.254', true)).resolves.toBeUndefined();
   });
 });
+
+/**
+ * Regressions from the 2026-09 CertNotify audit.
+ *
+ * Both were reachable in the published 0.3.0: `assertPublicHostname` received
+ * the hostname a URL parser produces, and for IPv6 that keeps the brackets.
+ * `net.isIP('[::1]')` is 0, so the literal-IP branch was skipped, DNS
+ * resolution of the string failed, and the failure allowed the host.
+ */
+describe('IPv6 literals as a URL parser produces them', () => {
+  const blocked = async (host: string): Promise<boolean> => {
+    try { await assertPublicHostname(host); return false; } catch { return true; }
+  };
+
+  it.each(['[::1]', '[::]', '[fd00::1]', '[fe80::1]'])(
+    'blocks the bracketed literal %s',
+    async (host) => { expect(await blocked(host)).toBe(true); },
+  );
+
+  it('blocks IPv4-mapped loopback in the hex form a URL normalises to', async () => {
+    // `http://[::ffff:127.0.0.1]/` becomes `[::ffff:7f00:1]`, where reading
+    // the final group as an IPv4 address yields "1" and misses loopback.
+    expect(await blocked('[::ffff:7f00:1]')).toBe(true);
+    expect(isPrivateIP('::ffff:7f00:1')).toBe(true);
+    expect(isPrivateIP('::ffff:127.0.0.1')).toBe(true);
+  });
+
+  it('blocks cloud metadata mapped into IPv6', async () => {
+    expect(await blocked('[::ffff:a9fe:a9fe]')).toBe(true); // 169.254.169.254
+  });
+
+  it('blocks tunnel prefixes carrying a private IPv4 destination', () => {
+    expect(isPrivateIP('2002:7f00:1::')).toBe(true);   // 6to4  -> 127.0.0.1
+    expect(isPrivateIP('64:ff9b::7f00:1')).toBe(true); // NAT64 -> 127.0.0.1
+  });
+
+  it('still allows public IPv6', () => {
+    expect(isPrivateIP('2606:4700:4700::1111')).toBe(false);
+  });
+});
