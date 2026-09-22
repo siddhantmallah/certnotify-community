@@ -30,7 +30,8 @@
     "test": "vitest run",
     "test:unit": "vitest run test/ssrfGuard.test.ts test/headers-grading.test.ts test/score.test.ts test/state.test.ts test/whoisPrivacy.test.ts test/mixedContent.test.ts test/spf.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "verify": "npm run typecheck && npm run build && npm test"
+    "verify": "npm run typecheck && npm run build && npm test",
+    "prepublishOnly": "npm run verify"
   },
   "keywords": [
     "security",
