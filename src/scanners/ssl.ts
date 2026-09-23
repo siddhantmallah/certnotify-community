@@ -1,5 +1,5 @@
 import tls from 'node:tls';
-import { assertPublicHostname } from './ssrfGuard.js';
+import { pinPublicHost } from './ssrfGuard.js';
 import type { SSLResult } from '../types.js';
 
 function asString(value: string | string[] | undefined, fallback: string): string {
@@ -20,11 +20,23 @@ export async function checkSSL(rawHostname: string, opts: { port?: number; allow
   const hostname = cleanHostname(rawHostname);
   const port = opts.port ?? 443;
 
-  await assertPublicHostname(hostname, opts.allowPrivate);
+  // Pinned, not merely validated. Connecting by hostname would resolve a
+  // second time, and a hostile authoritative server can answer that lookup
+  // differently from the one the check saw.
+  const pinned = await pinPublicHost(hostname, opts.allowPrivate);
 
   return new Promise((resolve, reject) => {
     const socket = tls.connect(
-      { host: hostname, port, servername: hostname, rejectUnauthorized: false },
+      {
+        host: hostname,
+        port,
+        // SNI stays the hostname, so the certificate presented is the one for
+        // the name the caller asked about — pinning the address does not
+        // change which virtual host answers.
+        servername: hostname,
+        lookup: pinned.lookup,
+        rejectUnauthorized: false,
+      },
       () => {
         const certificate = socket.getPeerCertificate(true);
 

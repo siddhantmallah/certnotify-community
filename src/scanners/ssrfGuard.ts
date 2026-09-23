@@ -123,21 +123,35 @@ const BLOCKED_HOSTNAMES = new Set(['localhost', 'localhost.localdomain', 'metada
  * Pass `allowPrivate: true` (the CLI's `--allow-private` flag) to skip this
  * check entirely for legitimate local/private-network testing.
  */
-export async function assertPublicHostname(rawHostname: string, allowPrivate = false): Promise<void> {
-  if (allowPrivate) return;
-
-  // Brackets are URL syntax, not part of the address. `new URL()` keeps them
-  // on `hostname` for an IPv6 literal, and leaving them on made `net.isIP`
-  // return 0 for every IPv6 address - so the literal-IP branch below was
-  // skipped, the string went to DNS, resolution failed, and the failure was
-  // treated as permission to proceed. `http://[::1]/` reached loopback.
+/**
+ * Bare hostname, lowercased, with an IPv6 literal's brackets removed.
+ *
+ * Brackets are URL syntax, not part of the address. `new URL()` keeps them on
+ * `hostname` for an IPv6 literal, and leaving them on made `net.isIP` return 0
+ * for every IPv6 address - so the literal-IP branch was skipped, the string
+ * went to DNS, resolution failed, and the failure was treated as permission to
+ * proceed. `http://[::1]/` reached loopback.
+ */
+export function normaliseHostname(rawHostname: string): string {
   let hostname = String(rawHostname || '').trim().toLowerCase();
   if (hostname.startsWith('[') && hostname.endsWith(']')) hostname = hostname.slice(1, -1);
   if (hostname.endsWith('.')) hostname = hostname.slice(0, -1);
+  return hostname;
+}
+
+/** Names refused regardless of what they resolve to. */
+function assertNameAllowed(hostname: string): void {
   if (!hostname) throw new Error('Hostname is required');
   if (BLOCKED_HOSTNAMES.has(hostname) || hostname.endsWith('.local') || hostname.endsWith('.internal')) {
     throw new Error('This hostname is not allowed (use --allow-private to override for local testing)');
   }
+}
+
+export async function assertPublicHostname(rawHostname: string, allowPrivate = false): Promise<void> {
+  if (allowPrivate) return;
+
+  const hostname = normaliseHostname(rawHostname);
+  assertNameAllowed(hostname);
 
   if (net.isIP(hostname)) {
     if (isPrivateIP(hostname)) throw new Error('This hostname is not allowed (use --allow-private to override for local testing)');
@@ -159,4 +173,83 @@ export async function assertPublicHostname(rawHostname: string, allowPrivate = f
   if (addresses.length > 0 && addresses.some(isPrivateIP)) {
     throw new Error('This hostname resolves to a private or internal address and cannot be checked (use --allow-private to override for local testing)');
   }
+}
+
+/**
+ * Resolve once, validate, and pin — so the socket goes where the check went.
+ *
+ * `assertPublicHostname` resolves a name and validates the addresses; the
+ * caller then connects *by hostname*, which resolves a second time. Those are
+ * two independent lookups, and whoever runs the authoritative server for a
+ * domain can answer them differently: public for the check, private for the
+ * connection. The name stays a legitimate public domain throughout — only the
+ * answer changes. That is DNS rebinding, and no amount of care in the
+ * validator prevents it, because the validator is not the thing that connects.
+ *
+ * Pass the returned `lookup` to `tls.connect` or `net.connect` and the socket
+ * goes to the address that was actually checked. The hostname is still used
+ * for SNI and the Host header, so virtual hosting and certificate validation
+ * are unaffected — which is why this works where connecting to a bare IP
+ * would not.
+ */
+export interface PinnedHost {
+  hostname: string;
+  addresses: dns.LookupAddress[];
+  /** Performs no DNS. Pass as the `lookup` option. */
+  lookup: net.LookupFunction;
+}
+
+export async function pinPublicHost(rawHostname: string, allowPrivate = false): Promise<PinnedHost> {
+  const hostname = normaliseHostname(rawHostname);
+  if (!allowPrivate) assertNameAllowed(hostname);
+  if (!hostname) throw new Error('Hostname is required');
+
+  let addresses: dns.LookupAddress[];
+
+  if (net.isIP(hostname)) {
+    addresses = [{ address: hostname, family: net.isIP(hostname) }];
+  } else {
+    try {
+      // `lookup`, not `resolve4`/`resolve6`: this is the resolver the socket
+      // would have used, so the answer being pinned is the one that matters.
+      addresses = await dns.promises.lookup(hostname, { all: true, verbatim: true });
+    } catch {
+      throw new Error(`${hostname} could not be resolved`);
+    }
+  }
+
+  if (addresses.length === 0) throw new Error(`${hostname} resolved to no addresses`);
+
+  // Every address, not just the first: a name resolving to one public and one
+  // private address would otherwise be reachable whenever the stack picked the
+  // second.
+  if (!allowPrivate && addresses.some((entry) => isPrivateIP(entry.address))) {
+    throw new Error('This hostname resolves to a private or internal address and cannot be checked (use --allow-private to override for local testing)');
+  }
+
+  const pinned = [...addresses];
+
+  const lookup: net.LookupFunction = (_hostname, options, callback) => {
+    // The hostname argument is ignored on purpose. Consulting it would
+    // reintroduce the second resolution this exists to remove.
+    const requested = options?.family;
+    const family =
+      requested === 'IPv4' ? 4
+      : requested === 'IPv6' ? 6
+      : typeof requested === 'number' && requested !== 0 ? requested
+      : undefined;
+
+    const matching = family ? pinned.filter((entry) => entry.family === family) : pinned;
+    if (matching.length === 0) {
+      const err = new Error(`No pinned address for family ${String(family)}`) as NodeJS.ErrnoException;
+      err.code = 'ENOTFOUND';
+      callback(err, '');
+      return;
+    }
+
+    if (options?.all) callback(null, matching);
+    else callback(null, matching[0].address, matching[0].family);
+  };
+
+  return { hostname, addresses: pinned, lookup };
 }

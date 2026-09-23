@@ -1,6 +1,5 @@
-import dns from 'node:dns';
 import net from 'node:net';
-import { assertPublicHostname, isPrivateIP } from './ssrfGuard.js';
+import { pinPublicHost } from './ssrfGuard.js';
 import type { PortCheckResult, PortRisk, PortsResult } from '../types.js';
 
 const PORTS: { port: number; service: string; risk: PortRisk }[] = [
@@ -57,19 +56,16 @@ function tcpProbe(host: string, port: number, timeoutMs = 3000): Promise<boolean
 export async function checkPorts(rawHostname: string, opts: { allowPrivate?: boolean } = {}): Promise<PortsResult> {
   const hostname = rawHostname.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
 
-  await assertPublicHostname(hostname, opts.allowPrivate);
-
-  let hostIp = hostname;
-  try {
-    const addresses = await dns.promises.resolve4(hostname);
-    if (addresses[0]) hostIp = addresses[0];
-  } catch {
-    // use hostname as-is (already an IP, or resolution failed and the probe will too)
-  }
-
-  if (!opts.allowPrivate && isPrivateIP(hostIp)) {
-    throw new Error('This hostname resolves to a private or internal address and cannot be scanned (use --allow-private to override for local testing)');
-  }
+  // This scanner was already safe from rebinding — it resolves once and then
+  // connects to the resolved *address*, so there is no second lookup to
+  // poison. What it did not do is check every address: it took `addresses[0]`
+  // and validated only that, so a name resolving to one public and one private
+  // address passed whenever the public one happened to sort first.
+  //
+  // `pinPublicHost` validates all of them and rejects if any is private, which
+  // is the stricter and simpler rule. The probe still connects by address.
+  const pinned = await pinPublicHost(hostname, opts.allowPrivate);
+  const hostIp = pinned.addresses[0].address;
 
   const results: PortCheckResult[] = await Promise.all(
     PORTS.map(async ({ port, service, risk }) => ({ port, service, risk, open: await tcpProbe(hostIp, port) }))
