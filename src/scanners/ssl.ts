@@ -1,4 +1,5 @@
 import tls from 'node:tls';
+import { describeError } from '../errors.js';
 import { pinPublicHost } from './ssrfGuard.js';
 import type { SSLResult } from '../types.js';
 
@@ -91,7 +92,10 @@ export async function checkSSL(rawHostname: string, opts: { port?: number; allow
 
     socket.on('error', (error) => {
       socket.destroy();
-      reject(new Error(`SSL check failed: ${error.message}`));
+      // describeError, not error.message: a host refusing on both its A and
+      // AAAA records raises an AggregateError whose message is empty, and this
+      // line then recorded "SSL check failed: " and nothing else.
+      reject(new Error(`SSL check failed: ${describeError(error)}`));
     });
 
     socket.setTimeout(10000);

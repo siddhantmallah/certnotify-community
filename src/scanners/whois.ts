@@ -1,4 +1,5 @@
 import type { WhoisResult } from '../types.js';
+import { describeError } from '../errors.js';
 
 export function cleanDomain(input: string): string {
   return String(input || '')
@@ -143,7 +144,7 @@ export async function checkWhois(domain: string): Promise<WhoisResult> {
       domain: cleaned,
       valid: false,
       error: 'RDAP_LOOKUP_ERROR',
-      message: `Unable to retrieve domain information for ${cleaned}. ${error.message}`,
+      message: `Unable to retrieve domain information for ${cleaned}. ${describeError(error)}`,
       registrar: 'Unknown',
       nameServers: [],
       status: [],

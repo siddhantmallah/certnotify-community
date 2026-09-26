@@ -1,6 +1,9 @@
 export * from './scanners/index.js';
 export * from './types.js';
 export { defaultStateDir, readState, writeState, type StateOptions } from './state.js';
+// Exported so consumers stop writing `${err.message}`, which is empty for
+// the AggregateError Node raises when every address for a host fails.
+export { describeError } from './errors.js';
 
 import { checkSSL } from './scanners/ssl.js';
 import { checkWhois } from './scanners/whois.js';

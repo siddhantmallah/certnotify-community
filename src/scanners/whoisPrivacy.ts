@@ -1,4 +1,5 @@
 import { fetchRdapData, cleanDomain } from './whois.js';
+import { describeError } from '../errors.js';
 import { readState, writeState, type StateOptions } from '../state.js';
 import type { WhoisPrivacyContact, WhoisPrivacyResult } from '../types.js';
 
@@ -110,7 +111,7 @@ export async function checkWhoisPrivacy(rawDomain: string, opts: StateOptions = 
       previouslyPrivate: null,
       exposedData: null,
       checkedAt: checkedAtOnError,
-      error: `Unable to retrieve WHOIS data for ${domain}. ${error.message}`,
+      error: `Unable to retrieve WHOIS data for ${domain}. ${describeError(error)}`,
     };
   }
 
