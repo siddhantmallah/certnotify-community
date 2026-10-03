@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { assertPublicHostname } from './ssrfGuard.js';
 import { readState, writeState, type StateOptions } from '../state.js';
 import type { DefacementResult } from '../types.js';
+import { pinnedFetch } from './pinnedFetch.js';
 
 /**
  * Extract a stable content fingerprint from raw HTML — title, meta
@@ -39,10 +40,11 @@ export async function checkDefacement(rawTarget: string, opts: StateOptions & { 
   const hostname = rawTarget.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase().trim();
   await assertPublicHostname(hostname, opts.allowPrivate);
 
-  const res = await fetch(`https://${hostname}`, {
-    signal: AbortSignal.timeout(12000),
+  // Pinned per hop — see pinnedFetch.ts.
+  const res = await pinnedFetch(`https://${hostname}`, {
+    timeoutMs: 12000,
     headers: { 'User-Agent': 'certnotify-cli/0.2 (+https://www.certnotify.com)' },
-    redirect: 'follow',
+    allowPrivate: opts.allowPrivate,
   });
   if (!res.ok) throw new Error(`Could not fetch page (HTTP ${res.status}) — site may be down or blocking requests`);
   const html = await res.text();

@@ -1,5 +1,6 @@
 import { assertPublicHostname } from './ssrfGuard.js';
 import type { UptimeResult, UptimeStatus } from '../types.js';
+import { pinnedFetch } from './pinnedFetch.js';
 
 /**
  * Canonical uptime check. The original app had three divergent
@@ -24,11 +25,8 @@ export async function checkUptime(rawDomain: string, opts: { allowPrivate?: bool
   let contentType: string | null = null;
 
   try {
-    const res = await fetch(`https://${domain}`, {
-      method: 'HEAD',
-      signal: AbortSignal.timeout(8000),
-      redirect: 'follow',
-    });
+    // Pinned per hop — see pinnedFetch.ts.
+    const res = await pinnedFetch(`https://${domain}`, { method: 'HEAD', timeoutMs: 8000, allowPrivate: opts.allowPrivate });
     statusCode = res.status;
     online = res.status < 500;
     finalUrl = res.url;
@@ -38,11 +36,7 @@ export async function checkUptime(rawDomain: string, opts: { allowPrivate?: bool
     contentType = res.headers.get('content-type');
   } catch {
     try {
-      const res = await fetch(`http://${domain}`, {
-        method: 'HEAD',
-        signal: AbortSignal.timeout(5000),
-        redirect: 'follow',
-      });
+      const res = await pinnedFetch(`http://${domain}`, { method: 'HEAD', timeoutMs: 5000, allowPrivate: opts.allowPrivate });
       statusCode = res.status;
       online = res.status < 500;
       finalUrl = res.url;

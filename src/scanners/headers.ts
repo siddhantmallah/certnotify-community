@@ -1,5 +1,6 @@
 import { assertPublicHostname } from './ssrfGuard.js';
 import type { HeaderCheckResult, HeaderGrade, HeadersResult } from '../types.js';
+import { pinnedFetch } from './pinnedFetch.js';
 
 /**
  * Canonical security-headers rubric. The original app had three divergent,
@@ -116,11 +117,13 @@ export async function checkHeaders(rawDomain: string, opts: { allowPrivate?: boo
   const url = `https://${domain}`;
 
   try {
-    const res = await fetch(url, {
+    // Pinned: the socket goes to the address just validated, on every
+    // redirect hop, not to a second resolution of the name.
+    const res = await pinnedFetch(url, {
       method: 'GET',
-      redirect: 'follow',
-      signal: AbortSignal.timeout(10000),
+      timeoutMs: 10000,
       headers: { 'User-Agent': 'certnotify-cli/0.1 (+https://www.certnotify.com)' },
+      allowPrivate: opts.allowPrivate,
     });
 
     const results: HeaderCheckResult[] = SECURITY_HEADERS.map((h) => {

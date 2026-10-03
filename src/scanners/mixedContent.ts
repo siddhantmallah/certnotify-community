@@ -1,6 +1,7 @@
 import { assertPublicHostname } from './ssrfGuard.js';
 import { readState, writeState, type StateOptions } from '../state.js';
 import type { MixedContentIssue, MixedContentResourceType, MixedContentResult } from '../types.js';
+import { pinnedFetch } from './pinnedFetch.js';
 
 const MAX_PAGES = 10;
 const COMMON_PATHS = ['/about', '/contact', '/blog', '/products', '/services', '/pricing'];
@@ -66,11 +67,15 @@ export function scanHtml(html: string): RawIssue[] {
   return issues;
 }
 
-async function fetchText(url: string, timeoutMs: number): Promise<string | null> {
+async function fetchText(url: string, timeoutMs: number, allowPrivate = false): Promise<string | null> {
   try {
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(timeoutMs),
+    // Pinned per hop, and checked for every URL — including the ones read
+    // out of the site's sitemap, which used to be fetched with no host check
+    // at all: a sitemap listing https://10.0.0.5/ was an SSRF.
+    const res = await pinnedFetch(url, {
+      timeoutMs,
       headers: { 'User-Agent': 'certnotify-cli/0.2 (+https://www.certnotify.com)' },
+      allowPrivate,
     });
     if (!res.ok) return null;
     return await res.text();
@@ -79,15 +84,32 @@ async function fetchText(url: string, timeoutMs: number): Promise<string | null>
   }
 }
 
-async function discoverPages(baseUrl: string): Promise<string[]> {
+/**
+ * The https URLs a sitemap lists on `host` itself.
+ *
+ * Same host only. A sitemap is written by whoever runs the site being
+ * scanned, and before this filter any `<loc>` was fetched — a sitemap listing
+ * an internal address made the scanner request it.
+ */
+export function sitemapPages(xml: string, host: string): string[] {
+  const out: string[] = [];
+  for (const m of xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)) {
+    let u: URL;
+    try { u = new URL(m[1]); } catch { continue; }
+    if (u.protocol === 'https:' && u.hostname === host) out.push(u.toString());
+  }
+  return out;
+}
+
+async function discoverPages(baseUrl: string, allowPrivate = false): Promise<string[]> {
   const domain = baseUrl.replace(/\/$/, '');
   const pages = COMMON_PATHS.map((p) => `${domain}${p}`);
+  const host = new URL(domain).hostname;
 
-  const sitemapXml = await fetchText(`${domain}/sitemap.xml`, 5000);
+  const sitemapXml = await fetchText(`${domain}/sitemap.xml`, 5000, allowPrivate);
   if (sitemapXml) {
-    const locs = [...sitemapXml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => m[1]);
-    for (const url of locs) {
-      if (url.startsWith('https://') && pages.length < MAX_PAGES) pages.push(url);
+    for (const url of sitemapPages(sitemapXml, host)) {
+      if (pages.length < MAX_PAGES) pages.push(url);
     }
   }
 
@@ -111,13 +133,13 @@ export async function checkMixedContent(rawTarget: string, opts: StateOptions & 
   }
 
   const homeUrl = `https://${hostname}`;
-  const pagesToScan = [homeUrl, ...(await discoverPages(homeUrl)).filter((p) => p !== homeUrl)].slice(0, MAX_PAGES);
+  const pagesToScan = [homeUrl, ...(await discoverPages(homeUrl, opts.allowPrivate)).filter((p) => p !== homeUrl)].slice(0, MAX_PAGES);
 
   const foundByUrl = new Map<string, RawIssue>();
   let pagesScanned = 0;
 
   for (const pageUrl of pagesToScan) {
-    const html = await fetchText(pageUrl, 10000);
+    const html = await fetchText(pageUrl, 10000, opts.allowPrivate);
     if (html === null) continue;
     pagesScanned++;
     for (const issue of scanHtml(html)) {
