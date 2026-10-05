@@ -4,6 +4,8 @@ import type { DnsChangesResult, DnsRecordChange } from '../types.js';
 
 const MONITORED_TYPES = ['A', 'AAAA', 'MX', 'NS', 'TXT', 'CNAME'] as const;
 const CRITICAL_TYPES = new Set(['A', 'AAAA', 'NS', 'MX']);
+/** checkDns errors that are an authoritative "nothing here", not a failed lookup. */
+const ANSWERED_EMPTY = new Set(['No records', 'Domain not found']);
 
 /**
  * DNS-hijack monitoring: resolves the monitored record types and compares
@@ -13,9 +15,17 @@ const CRITICAL_TYPES = new Set(['A', 'AAAA', 'NS', 'MX']);
 export async function checkDnsChanges(target: string, opts: StateOptions = {}): Promise<DnsChangesResult> {
   const scan = await checkDns(target, [...MONITORED_TYPES]);
 
+  // Only answers count. "No records" and "Domain not found" are answers — the
+  // records really are gone, which is exactly what hijack monitoring exists to
+  // notice. "Query failed" is a timeout or a resolver error: it says nothing
+  // about the zone, so that type is left out of `current` and is neither
+  // compared nor allowed to overwrite the last good baseline. Treating a failed
+  // lookup as an empty set reported a critical MX change "from nothing" the
+  // moment the next lookup succeeded.
   const current: Record<string, string[]> = {};
   for (const r of scan.results) {
     if (!r.error) current[r.type] = [...r.records].sort();
+    else if (ANSWERED_EMPTY.has(r.error)) current[r.type] = [];
   }
 
   const state = await readState(scan.domain, opts);
@@ -29,16 +39,19 @@ export async function checkDnsChanges(target: string, opts: StateOptions = {}): 
   }
 
   const changes: DnsRecordChange[] = [];
-  const allTypes = new Set([...Object.keys(previous), ...Object.keys(current)]);
-  for (const type of allTypes) {
-    const from = previous[type] ?? [];
-    const to = current[type] ?? [];
+  for (const type of Object.keys(current)) {
+    // A type with no baseline yet (its earlier lookup failed) starts one here
+    // rather than reporting everything it holds as new.
+    if (!(type in previous)) continue;
+    const from = previous[type];
+    const to = current[type];
     if (from.join(',') !== to.join(',')) {
       changes.push({ recordType: type, from, to, critical: CRITICAL_TYPES.has(type) });
     }
   }
 
-  state.dns = { records: current, updatedAt: checkedAt };
+  // Types that failed this time keep their last known value.
+  state.dns = { records: { ...previous, ...current }, updatedAt: checkedAt };
   await writeState(scan.domain, state, opts);
 
   return {
