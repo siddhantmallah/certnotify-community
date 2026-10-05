@@ -5,7 +5,23 @@ import { pinnedFetch } from './pinnedFetch.js';
 
 const MAX_PAGES = 10;
 const COMMON_PATHS = ['/about', '/contact', '/blog', '/products', '/services', '/pricing'];
-const INLINE_HTTP_PATTERN = /http:\/\/[^"')\s]+/gi;
+/**
+ * `url(http://…)` and `@import "http://…"` inside CSS — the inline loads a
+ * browser actually makes. Reported as type `inline`.
+ *
+ * This replaced a whole-page `http://` text search, which flagged anything
+ * that merely *mentioned* a URL: the `xmlns="http://www.w3.org/2000/svg"` on
+ * every inline SVG, JSON-LD `@context`, plain `<a href>` links, font licence
+ * URLs, comments. None of those is fetched, so none is mixed content, and in
+ * production every single `inline` finding it produced was one of them.
+ */
+const CSS_HTTP_URL = /url\(\s*["']?(http:\/\/[^"')\s]+)["']?\s*\)|@import\s+["'](http:\/\/[^"']+)["']/gi;
+
+function cssLoads(css: string): string[] {
+  const out: string[] = [];
+  for (const m of css.matchAll(CSS_HTTP_URL)) out.push(m[1] ?? m[2]);
+  return out;
+}
 
 function getAttr(tag: string, name: string): string | null {
   const m = tag.match(new RegExp(`\\b${name}\\s*=\\s*["']([^"']*)["']`, 'i'));
@@ -22,12 +38,12 @@ interface RawIssue {
 }
 
 /**
- * Finds HTTP resources embedded in an HTTPS page — the exact set of checks
- * a browser's own mixed-content blocker flags. Uses plain regex/attribute
- * matching rather than a full HTML parser: the original app's own broadest
- * check (the inline catch-all) already worked this way, and the structured
- * per-tag checks below are simple enough attribute patterns not to need a
- * DOM — keeps this package free of a heavy parsing dependency.
+ * Finds HTTP resources an HTTPS page makes the browser *load* — the set a
+ * browser's own mixed-content blocker acts on. A URL that is only mentioned
+ * (a link, a namespace, structured data) is not mixed content and is not
+ * reported. Uses plain regex/attribute matching rather than a full HTML
+ * parser: the per-tag checks are simple attribute patterns, and it keeps this
+ * package free of a heavy parsing dependency.
  */
 export function scanHtml(html: string): RawIssue[] {
   const issues: RawIssue[] = [];
@@ -39,9 +55,13 @@ export function scanHtml(html: string): RawIssue[] {
     issues.push({ type, url });
   };
 
+  const httpCandidates = (srcset: string | null) =>
+    (srcset ?? '').split(',').map((part) => part.trim().split(/\s+/)[0]).filter((u) => u?.startsWith('http://'));
+
   for (const tag of findTags(html, 'img')) {
     const src = getAttr(tag, 'src');
     if (src?.startsWith('http://')) add('image', src);
+    for (const u of httpCandidates(getAttr(tag, 'srcset'))) add('image', u);
   }
   for (const tag of findTags(html, 'script')) {
     const src = getAttr(tag, 'src');
@@ -50,19 +70,45 @@ export function scanHtml(html: string): RawIssue[] {
   for (const tag of findTags(html, 'link')) {
     const rel = getAttr(tag, 'rel');
     const href = getAttr(tag, 'href');
-    if (rel?.toLowerCase() === 'stylesheet' && href?.startsWith('http://')) add('stylesheet', href);
+    if (!href?.startsWith('http://')) continue;
+    // Only the rel values that make the browser fetch the href. A canonical,
+    // alternate or author link is a reference, not a load.
+    const rels = (rel ?? '').toLowerCase().split(/\s+/);
+    const as = getAttr(tag, 'as')?.toLowerCase();
+    if (rels.includes('stylesheet')) add('stylesheet', href);
+    else if (rels.includes('icon') || rels.includes('apple-touch-icon')) add('image', href);
+    else if (rels.includes('modulepreload')) add('script', href);
+    else if (rels.includes('preload')) {
+      add(as === 'script' ? 'script' : as === 'style' ? 'stylesheet' : as === 'image' ? 'image' : 'media', href);
+    }
   }
   for (const tag of findTags(html, 'iframe')) {
     const src = getAttr(tag, 'src');
     if (src?.startsWith('http://')) add('iframe', src);
   }
-  for (const tag of findTags(html, 'source')) {
-    const src = getAttr(tag, 'src');
-    if (src?.startsWith('http://')) add('media', src);
+  for (const tagName of ['source', 'video', 'audio', 'track', 'embed']) {
+    for (const tag of findTags(html, tagName)) {
+      const src = getAttr(tag, 'src');
+      if (src?.startsWith('http://')) add('media', src);
+      if (tagName === 'source') for (const u of httpCandidates(getAttr(tag, 'srcset'))) add('image', u);
+    }
+  }
+  for (const tag of findTags(html, 'video')) {
+    const poster = getAttr(tag, 'poster');
+    if (poster?.startsWith('http://')) add('image', poster);
+  }
+  for (const tag of findTags(html, 'object')) {
+    const data = getAttr(tag, 'data');
+    if (data?.startsWith('http://')) add('media', data);
   }
 
-  const inlineMatches = html.match(INLINE_HTTP_PATTERN) ?? [];
-  for (const match of inlineMatches) add('inline', match);
+  // CSS: <style> blocks and style="" attributes.
+  for (const m of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) {
+    for (const u of cssLoads(m[1])) add('inline', u);
+  }
+  for (const m of html.matchAll(/\bstyle\s*=\s*(["'])([\s\S]*?)\1/gi)) {
+    for (const u of cssLoads(m[2])) add('inline', u);
+  }
 
   return issues;
 }
