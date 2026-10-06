@@ -56,8 +56,27 @@ describe('compositeScore', () => {
     expect(compositeScore(report)).toBe(80);
   });
 
-  it('treats an unknown blacklist reputation as neutral (100), not a penalty', () => {
-    const report = baseReport({ blacklist: { reputation: 'unknown' } as any });
-    expect(compositeScore(report)).toBe(100);
+  it('leaves an unknown blacklist reputation out of the score instead of scoring it clean', () => {
+    // Every list timing out used to score 100, the same as a clean result.
+    expect(compositeScore(baseReport({ blacklist: { reputation: 'unknown' } as any }))).toBeNull();
+    expect(compositeScore(baseReport({ blacklist: { reputation: 'unknown' } as any, email: { score: 40 } as any }))).toBe(40);
+  });
+
+  it('leaves an unknown DNSSEC status out of the score instead of scoring it unsigned', () => {
+    const report = baseReport({ dnssec: { status: 'unknown' } as any, email: { score: 80 } as any });
+    expect(compositeScore(report)).toBe(80);
+  });
+
+  it('scores an in-date but untrusted certificate as a failure', () => {
+    // The shape checkSSL now returns for a self-signed certificate.
+    const report = baseReport({ ssl: { valid: false, dateValid: true, authorized: false, legacyProtocols: [] } as any });
+    expect(compositeScore(report)).toBe(0);
+  });
+
+  it('gives half marks to a trusted certificate on a server that still accepts legacy TLS', () => {
+    expect(compositeScore(baseReport({ ssl: { valid: true, legacyProtocols: ['TLSv1'] } as any }))).toBe(50);
+    expect(compositeScore(baseReport({ ssl: { valid: true, legacyProtocols: [] } as any }))).toBe(100);
+    // Unknown legacy support is not penalised.
+    expect(compositeScore(baseReport({ ssl: { valid: true, legacyProtocols: null } as any }))).toBe(100);
   });
 });

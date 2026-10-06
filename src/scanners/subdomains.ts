@@ -1,6 +1,7 @@
 import dns from 'node:dns';
 import { readState, writeState, type StateOptions } from '../state.js';
 import type { SubdomainCandidate, SubdomainDiscoveryResult } from '../types.js';
+import { USER_AGENT } from '../version.js';
 
 const COMMON_SUBDOMAINS = [
   'www', 'api', 'admin', 'app', 'staging', 'dev', 'mail', 'portal', 'cdn', 'status',
@@ -26,7 +27,7 @@ interface CTCert {
 async function queryCtLogs(domain: string): Promise<{ hosts: Set<string>; ok: boolean }> {
   try {
     const res = await fetch(`https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`, {
-      headers: { Accept: 'application/json', 'User-Agent': 'certnotify-cli/0.2 (+https://www.certnotify.com)' },
+      headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return { hosts: new Set(), ok: false };

@@ -4,6 +4,7 @@ export { defaultStateDir, readState, writeState, type StateOptions } from './sta
 // Exported so consumers stop writing `${err.message}`, which is empty for
 // the AggregateError Node raises when every address for a host fails.
 export { describeError } from './errors.js';
+export { VERSION } from './version.js';
 
 import { checkSSL } from './scanners/ssl.js';
 import { checkWhois } from './scanners/whois.js';

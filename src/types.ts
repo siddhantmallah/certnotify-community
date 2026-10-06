@@ -2,15 +2,44 @@ export type CheckName = 'ssl' | 'whois' | 'dns' | 'dnssec' | 'email' | 'headers'
 
 export const ALL_CHECKS: CheckName[] = ['ssl', 'whois', 'dns', 'dnssec', 'email', 'headers', 'ports', 'blacklist', 'uptime'];
 
+/** The protocol versions older than TLS 1.2 that the legacy probe can detect. */
+export type LegacyTlsVersion = 'TLSv1' | 'TLSv1.1';
+
 export interface SSLResult {
   hostname: string;
+  /**
+   * The certificate is in date AND trusted (`dateValid && authorized`). Before
+   * 0.5.0 this was the dates alone, so a self-signed, unknown-CA or wrong-host
+   * certificate reported `valid: true`.
+   */
   valid: boolean;
+  /** Now is between notBefore and notAfter. The whole of what `valid` used to mean. */
+  dateValid: boolean;
+  /** The chain verified against Node's CA store and the certificate names this host. */
+  authorized: boolean;
+  /** Node's reason when `authorized` is false, e.g. `DEPTH_ZERO_SELF_SIGNED_CERT`, `ERR_TLS_CERT_ALTNAME_INVALID`. */
+  authorizationError: string | null;
+  /**
+   * The certificate names this host, checked on its own. Node only checks the
+   * name once the chain verifies, so `authorized: false` alone does not say
+   * whether a self-signed certificate was also issued for the wrong name.
+   */
+  hostnameMatch: boolean;
+  /**
+   * Legacy versions the server completed (or agreed to) a handshake over,
+   * oldest first. `[]` means every probe was refused by the server. `null`
+   * means unknown: this runtime could not offer legacy TLS, or a probe gave no
+   * answer — never read it as clean.
+   */
+  legacyProtocols: LegacyTlsVersion[] | null;
   validFrom: string;
   validTo: string;
   daysRemaining: number;
   issuer: { organization: string; commonName: string; country: string };
   subject: { commonName: string; altNames: string[] };
+  /** The protocol a modern client negotiates, or the legacy one when the server speaks nothing newer. */
   tlsVersion: string;
+  /** From the worst protocol the server accepts, not the best it negotiates. */
   securityGrade: string;
   serialNumber: string;
   fingerprint: string;
@@ -46,13 +75,24 @@ export interface DnsResult {
   results: DnsRecordResult[];
 }
 
-export type DnssecStatus = 'signed-valid' | 'signed-unvalidated' | 'unsigned' | 'error';
+/**
+ * `error` is a SERVFAIL from the validating resolver — usually broken DNSSEC.
+ * `unknown` means the lookups themselves failed, which says nothing about the
+ * domain; before 0.5.0 that case reported `unsigned`.
+ */
+export type DnssecStatus = 'signed-valid' | 'signed-unvalidated' | 'unsigned' | 'error' | 'unknown';
 
 export interface DnssecResult {
   domain: string;
   dnssecEnabled: boolean;
   dnssecValid: boolean;
   status: DnssecStatus;
+  /**
+   * The resolver authenticated this name's DNSKEY answer: its keys, or (for a
+   * name inside a signed zone, which has none of its own) the zone's signed
+   * proof that there are none. AD on the DS answer, which the parent zone
+   * gives even for an unsigned delegation, no longer sets it.
+   */
   adBit: boolean;
   hasDNSKEY: boolean;
   hasDS: boolean;
@@ -93,6 +133,8 @@ export interface HeaderCheckResult {
   present: boolean;
   value: string | null;
   grade: HeaderGrade;
+  /** Counts toward `score`. False only for X-XSS-Protection, which no value can make good. */
+  scored: boolean;
   description: string;
   recommendation: string | null;
 }
@@ -127,10 +169,19 @@ export interface PortsResult {
   results: PortCheckResult[];
 }
 
+/** `error` covers timeouts, resolver failures and the list refusing the query. It is not clean. */
+export type DnsblStatus = 'listed' | 'not_listed' | 'error';
+
 export interface BlacklistEntryResult {
   name: string;
   zone: string;
+  /** Kept for 0.4 consumers: true only when `status` is `listed`. False does NOT mean clean — read `status`. */
   listed: boolean;
+  status: DnsblStatus;
+  /** The A records the list answered with (e.g. `127.0.0.2`), when it answered. */
+  answers: string[];
+  /** Why the list could not be checked, when `status` is `error`. */
+  error?: string;
 }
 
 export type ReputationStatus = 'clean' | 'suspicious' | 'blacklisted';
@@ -138,8 +189,13 @@ export type ReputationStatus = 'clean' | 'suspicious' | 'blacklisted';
 export interface BlacklistResult {
   domain: string;
   ip: string | null;
+  /** `clean` covers only the lists that answered (`checkedCount`); `unknown` when none did. */
   reputation: ReputationStatus | 'unknown';
   listedCount: number;
+  /** Lists that gave a usable answer, listed or not. */
+  checkedCount: number;
+  /** Lists that could not be checked. Never counted as clean. */
+  errorCount: number;
   results: BlacklistEntryResult[];
   error?: string;
 }

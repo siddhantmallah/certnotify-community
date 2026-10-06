@@ -2,6 +2,7 @@ import { assertPublicHostname } from './ssrfGuard.js';
 import { readState, writeState, type StateOptions } from '../state.js';
 import type { MixedContentIssue, MixedContentResourceType, MixedContentResult } from '../types.js';
 import { pinnedFetch } from './pinnedFetch.js';
+import { USER_AGENT } from '../version.js';
 
 const MAX_PAGES = 10;
 const COMMON_PATHS = ['/about', '/contact', '/blog', '/products', '/services', '/pricing'];
@@ -120,7 +121,7 @@ async function fetchText(url: string, timeoutMs: number, allowPrivate = false): 
     // at all: a sitemap listing https://10.0.0.5/ was an SSRF.
     const res = await pinnedFetch(url, {
       timeoutMs,
-      headers: { 'User-Agent': 'certnotify-cli/0.2 (+https://www.certnotify.com)' },
+      headers: { 'User-Agent': USER_AGENT },
       allowPrivate,
     });
     if (!res.ok) return null;

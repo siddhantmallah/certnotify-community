@@ -3,6 +3,7 @@ import { assertPublicHostname } from './ssrfGuard.js';
 import { readState, writeState, type StateOptions } from '../state.js';
 import type { DefacementResult } from '../types.js';
 import { pinnedFetch } from './pinnedFetch.js';
+import { USER_AGENT } from '../version.js';
 
 /**
  * Extract a stable content fingerprint from raw HTML — title, meta
@@ -43,7 +44,7 @@ export async function checkDefacement(rawTarget: string, opts: StateOptions & { 
   // Pinned per hop — see pinnedFetch.ts.
   const res = await pinnedFetch(`https://${hostname}`, {
     timeoutMs: 12000,
-    headers: { 'User-Agent': 'certnotify-cli/0.2 (+https://www.certnotify.com)' },
+    headers: { 'User-Agent': USER_AGENT },
     allowPrivate: opts.allowPrivate,
   });
   if (!res.ok) throw new Error(`Could not fetch page (HTTP ${res.status}) — site may be down or blocking requests`);

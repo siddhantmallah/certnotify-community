@@ -12,9 +12,15 @@ export function compositeScore(report: ScanReport): number | null {
   const weights: { value: number; weight: number }[] = [];
 
   if (report.ssl && !('error' in report.ssl)) {
-    weights.push({ value: report.ssl.valid ? 100 : 0, weight: 15 });
+    // `valid` includes trust since 0.5.0, so an untrusted certificate scores 0.
+    // Accepting TLS 1.0/1.1 is half marks: the certificate may be fine, but a
+    // downgrade still reaches a protocol with known attacks.
+    const value = !report.ssl.valid ? 0 : report.ssl.legacyProtocols?.length ? 50 : 100;
+    weights.push({ value, weight: 15 });
   }
-  if (report.dnssec) {
+  // `unknown` means the lookups failed. It is left out rather than scored,
+  // because scoring it either way is a claim about the domain.
+  if (report.dnssec && report.dnssec.status !== 'unknown') {
     const value = report.dnssec.status === 'signed-valid' ? 100 : report.dnssec.status === 'signed-unvalidated' ? 50 : 0;
     weights.push({ value, weight: 10 });
   }
@@ -28,8 +34,10 @@ export function compositeScore(report: ScanReport): number | null {
     const value = report.ports.riskLevel === 'critical' ? 0 : report.ports.riskLevel === 'high' ? 50 : 100;
     weights.push({ value, weight: 15 });
   }
-  if (report.blacklist) {
-    const value = report.blacklist.reputation === 'clean' ? 100 : report.blacklist.reputation === 'suspicious' ? 50 : report.blacklist.reputation === 'blacklisted' ? 0 : 100;
+  // An unknown reputation used to score 100, the same as clean — a run where
+  // every list timed out read as a perfect result.
+  if (report.blacklist && report.blacklist.reputation !== 'unknown') {
+    const value = report.blacklist.reputation === 'clean' ? 100 : report.blacklist.reputation === 'suspicious' ? 50 : 0;
     weights.push({ value, weight: 15 });
   }
   if (report.uptime && !('error' in report.uptime)) {

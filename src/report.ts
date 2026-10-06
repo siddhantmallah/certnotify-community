@@ -42,8 +42,24 @@ export function formatText(report: ScanReport): string {
       lines.push(`${statusIcon(false)} SSL Certificate — ${report.ssl.error}`);
     } else {
       const s = report.ssl;
-      lines.push(`${statusIcon(s.valid)} SSL Certificate — ${s.tlsVersion} (grade ${s.securityGrade}), expires in ${s.daysRemaining}d`);
+      const expiry = s.daysRemaining < 0 ? `expired ${-s.daysRemaining}d ago` : `expires in ${s.daysRemaining}d`;
+      lines.push(`${statusIcon(s.valid)} SSL Certificate — ${s.tlsVersion} (grade ${s.securityGrade}), ${expiry}`);
       lines.push(`  Issuer: ${s.issuer.commonName} · Subject: ${s.subject.commonName}`);
+      // These lead the detail lines rather than hiding behind a grade that only
+      // reflects the protocol. Not "by browsers": the commonest cause is a
+      // server leaving out its intermediate (UNABLE_TO_VERIFY_LEAF_SIGNATURE),
+      // which most clients reject but browsers that fetch it themselves accept.
+      if (s.authorized === false) {
+        lines.push(`  ${pc.red('✗')} Certificate not trusted${s.authorizationError ? ` (${s.authorizationError})` : ''}`);
+      }
+      if (s.hostnameMatch === false) {
+        lines.push(`  ${pc.red('✗')} Certificate is not issued for ${s.hostname}`);
+      }
+      if (s.legacyProtocols && s.legacyProtocols.length > 0) {
+        lines.push(`  ${warnIcon()} Accepts legacy ${s.legacyProtocols.join(' and ')} — disable everything below TLS 1.2`);
+      } else if (s.legacyProtocols === null) {
+        lines.push(`  ${pc.gray('•')} Legacy TLS 1.0/1.1 support could not be determined`);
+      }
     }
   }
 
@@ -59,7 +75,7 @@ export function formatText(report: ScanReport): string {
   if (report.dnssec) {
     const d = report.dnssec;
     const ok = d.status === 'signed-valid' ? true : d.status === 'unsigned' ? false : null;
-    lines.push(`${statusIcon(ok)} DNSSEC — ${d.status}`);
+    lines.push(`${statusIcon(ok)} DNSSEC — ${d.status}${d.status === 'unknown' && d.error ? ` (${d.error})` : ''}`);
   }
 
   if (report.email) {
@@ -103,7 +119,9 @@ export function formatText(report: ScanReport): string {
     if (b.error) {
       lines.push(`${warnIcon()} Blacklist check — ${b.error}`);
     } else {
-      lines.push(`${statusIcon(b.reputation === 'clean')} Blacklist check — ${b.reputation} (${b.listedCount}/${b.results.length} lists)`);
+      // "0/7 lists" counted lists that never answered as clean ones.
+      const unchecked = b.errorCount > 0 ? `, ${b.errorCount} could not be checked` : '';
+      lines.push(`${statusIcon(b.reputation === 'clean')} Blacklist check — ${b.reputation} (listed on ${b.listedCount} of ${b.checkedCount} lists checked${unchecked})`);
     }
   }
 

@@ -26,9 +26,34 @@ describe('checkSSL (live)', () => {
   it('returns a valid certificate for a well-known HTTPS domain', async () => {
     const result = await checkSSL(TARGET);
     expect(result.valid).toBe(true);
+    expect(result.authorized).toBe(true);
+    expect(result.authorizationError).toBeNull();
+    expect(result.hostnameMatch).toBe(true);
     expect(result.daysRemaining).toBeGreaterThan(0);
     expect(result.tlsVersion).toMatch(/^TLSv1\.[23]$/);
     expect(result.hostname).toBe(TARGET);
+    // GitHub turned off TLS 1.0/1.1 in 2018.
+    expect(result.legacyProtocols).toEqual([]);
+  });
+
+  it('checks www.<domain> as itself, not as the apex', async () => {
+    const result = await checkSSL(`www.${TARGET}`);
+    expect(result.hostname).toBe(`www.${TARGET}`);
+  });
+
+  // badssl.com publishes these hosts so that clients can be tested against them.
+  it('reports a certificate for another name as untrusted and mismatched', async () => {
+    const result = await checkSSL('wrong.host.badssl.com');
+    expect(result.authorized).toBe(false);
+    expect(result.hostnameMatch).toBe(false);
+    expect(result.valid).toBe(false);
+  });
+
+  it('reports a TLS 1.0-only server as legacy, not as a failed check', async () => {
+    const result = await checkSSL('tls-v1-0.badssl.com', { port: 1010 });
+    expect(result.tlsVersion).toBe('TLSv1');
+    expect(result.legacyProtocols).toEqual(['TLSv1']);
+    expect(result.securityGrade).toBe('D');
   });
 });
 
@@ -72,6 +97,12 @@ describe('checkDnssec (live)', () => {
     expect(typeof result.rcode.dnskey).not.toBe('undefined');
     expect(typeof result.rcode.ds).not.toBe('undefined');
   });
+
+  it('reports unsigned for a domain known not to run DNSSEC', async () => {
+    const result = await checkDnssec(TARGET);
+    expect(result.status).toBe('unsigned');
+    expect(result.dnssecEnabled).toBe(false);
+  });
 });
 
 describe('checkEmail (live)', () => {
@@ -89,6 +120,8 @@ describe('checkHeaders (live)', () => {
     const result = await checkHeaders(TARGET);
     expect(result.error).toBeUndefined();
     expect(result.headers).toHaveLength(10);
+    expect(result.headers.find((h) => h.name === 'X-XSS-Protection')?.scored).toBe(false);
+    expect(result.headers.filter((h) => h.scored)).toHaveLength(9);
     expect(result.score).toBeGreaterThanOrEqual(0);
     expect(result.score).toBeLessThanOrEqual(100);
     expect(Object.keys(result.rawHeaders).length).toBeGreaterThan(0);
@@ -116,8 +149,11 @@ describe('checkBlacklist (live)', () => {
   it('resolves an IP and returns a reputation verdict', async () => {
     const result = await checkBlacklist(TARGET);
     expect(result.ip).not.toBeNull();
-    expect(['clean', 'suspicious', 'blacklisted']).toContain(result.reputation);
-    expect(result.results).toHaveLength(7);
+    // `unknown` is a legitimate answer when every list times out from this network.
+    expect(['clean', 'suspicious', 'blacklisted', 'unknown']).toContain(result.reputation);
+    expect(result.results).toHaveLength(4);
+    expect(result.checkedCount + result.errorCount).toBe(4);
+    for (const r of result.results) expect(['listed', 'not_listed', 'error']).toContain(r.status);
   });
 });
 
