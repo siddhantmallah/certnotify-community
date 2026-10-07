@@ -37,9 +37,14 @@ export interface SSLResult {
   daysRemaining: number;
   issuer: { organization: string; commonName: string; country: string };
   subject: { commonName: string; altNames: string[] };
-  /** The protocol a modern client negotiates, or the legacy one when the server speaks nothing newer. */
+  /** The protocol a modern client negotiates, or the newest legacy one when the server speaks nothing newer. */
   tlsVersion: string;
-  /** From the worst protocol the server accepts, not the best it negotiates. */
+  /**
+   * From `tlsVersion` (TLS 1.3 A+, 1.2 A, 1.1 C, 1.0 D), capped at B while
+   * `legacyProtocols` is non-empty — SSL Labs' convention. A legacy-only
+   * server keeps its C or D. To alert on legacy TLS, read `legacyProtocols`
+   * rather than inferring it from the grade.
+   */
   securityGrade: string;
   serialNumber: string;
   fingerprint: string;
@@ -78,9 +83,10 @@ export interface DnsResult {
 /**
  * `error` is a SERVFAIL from the validating resolver — usually broken DNSSEC.
  * `unknown` means the lookups themselves failed, which says nothing about the
- * domain; before 0.5.0 that case reported `unsigned`.
+ * domain; before 0.5.0 that case reported `unsigned`. `nonexistent` is an
+ * NXDOMAIN answer: there is no such name, so nothing to be signed or not.
  */
-export type DnssecStatus = 'signed-valid' | 'signed-unvalidated' | 'unsigned' | 'error' | 'unknown';
+export type DnssecStatus = 'signed-valid' | 'signed-unvalidated' | 'unsigned' | 'error' | 'unknown' | 'nonexistent';
 
 export interface DnssecResult {
   domain: string;
@@ -101,6 +107,7 @@ export interface DnssecResult {
   dsCount: number;
   rcode: { dnskey: number | null; ds: number | null };
   explanation: string;
+  /** Set for `unknown` (which lookup failed) and `nonexistent` (the name does not exist). */
   error?: string;
 }
 
@@ -189,7 +196,12 @@ export type ReputationStatus = 'clean' | 'suspicious' | 'blacklisted';
 export interface BlacklistResult {
   domain: string;
   ip: string | null;
-  /** `clean` covers only the lists that answered (`checkedCount`); `unknown` when none did. */
+  /**
+   * `clean` covers only the lists that answered (`checkedCount`), and needs at
+   * least half of the lists queried to have answered. `unknown` when fewer did
+   * and none listed the address, with `error` saying how many answered. A
+   * listing is reported however few answered.
+   */
   reputation: ReputationStatus | 'unknown';
   listedCount: number;
   /** Lists that gave a usable answer, listed or not. */

@@ -1,6 +1,15 @@
 import type { ScanReport } from './types.js';
 
 /**
+ * The SSL component for a trusted certificate, by `securityGrade`. B is a
+ * modern server that still accepts TLS 1.0/1.1: half marks, since the
+ * certificate is fine but old clients can still be served a protocol with
+ * known attacks. C and D speak nothing newer, which current browsers refuse
+ * to connect over at all, so they score like an untrusted certificate.
+ */
+const PROTOCOL_SCORES: Record<string, number> = { 'A+': 100, A: 100, B: 50, C: 0, D: 0, F: 0 };
+
+/**
  * A simple, transparent weighted composite of the individual check scores —
  * NOT a replacement for real cross-check risk correlation (which needs
  * production-exposure/exploitability context this CLI doesn't have). This
@@ -13,14 +22,13 @@ export function compositeScore(report: ScanReport): number | null {
 
   if (report.ssl && !('error' in report.ssl)) {
     // `valid` includes trust since 0.5.0, so an untrusted certificate scores 0.
-    // Accepting TLS 1.0/1.1 is half marks: the certificate may be fine, but a
-    // downgrade still reaches a protocol with known attacks.
-    const value = !report.ssl.valid ? 0 : report.ssl.legacyProtocols?.length ? 50 : 100;
+    const value = !report.ssl.valid ? 0 : (PROTOCOL_SCORES[report.ssl.securityGrade] ?? 100);
     weights.push({ value, weight: 15 });
   }
-  // `unknown` means the lookups failed. It is left out rather than scored,
-  // because scoring it either way is a claim about the domain.
-  if (report.dnssec && report.dnssec.status !== 'unknown') {
+  // `unknown` means the lookups failed, and `nonexistent` that there is no
+  // such name. Both are left out rather than scored: neither says anything
+  // about how the domain's DNS is signed.
+  if (report.dnssec && report.dnssec.status !== 'unknown' && report.dnssec.status !== 'nonexistent') {
     const value = report.dnssec.status === 'signed-valid' ? 100 : report.dnssec.status === 'signed-unvalidated' ? 50 : 0;
     weights.push({ value, weight: 10 });
   }

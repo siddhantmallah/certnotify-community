@@ -38,6 +38,16 @@ describe('cleanHostname', () => {
   it('keeps www. — www.example.com is a different TLS name from example.com', () => {
     expect(cleanHostname('https://www.example.com/path')).toBe('www.example.com');
   });
+
+  it('strips the scheme whatever its case', () => {
+    // Was "https:": the scheme survived and the path strip cut at "//".
+    expect(cleanHostname('HTTPS://Example.com/path')).toBe('example.com');
+    expect(cleanHostname('Http://example.com')).toBe('example.com');
+  });
+
+  it('strips the scheme behind leading whitespace', () => {
+    expect(cleanHostname('  https://example.com/ ')).toBe('example.com');
+  });
 });
 
 describe('classifyLegacyProbeError', () => {
@@ -83,10 +93,25 @@ describe('summariseLegacyProbes', () => {
 });
 
 describe('gradeTlsProtocols', () => {
-  it('grades from the worst accepted protocol, not the negotiated one', () => {
+  it('grades from the negotiated protocol when no legacy version is accepted', () => {
     expect(gradeTlsProtocols('TLSv1.3', [])).toBe('A+');
-    expect(gradeTlsProtocols('TLSv1.3', ['TLSv1.1'])).toBe('C');
-    expect(gradeTlsProtocols('TLSv1.3', ['TLSv1', 'TLSv1.1'])).toBe('D');
+    expect(gradeTlsProtocols('TLSv1.2', [])).toBe('A');
+  });
+
+  it('caps a modern server that still accepts TLS 1.0 or 1.1 at B, not at the legacy version\'s grade', () => {
+    // www.google.com: TLS 1.3 negotiated, TLS 1.0 kept for old clients. Was D.
+    expect(gradeTlsProtocols('TLSv1.3', ['TLSv1', 'TLSv1.1'])).toBe('B');
+    expect(gradeTlsProtocols('TLSv1.3', ['TLSv1.1'])).toBe('B');
+    expect(gradeTlsProtocols('TLSv1.2', ['TLSv1'])).toBe('B');
+  });
+
+  it('grades a legacy-only server from the version it negotiates', () => {
+    expect(gradeTlsProtocols('TLSv1', ['TLSv1'])).toBe('D');
+    expect(gradeTlsProtocols('TLSv1.1', ['TLSv1', 'TLSv1.1'])).toBe('C');
+  });
+
+  it('does not cap when legacy support is unknown', () => {
+    expect(gradeTlsProtocols('TLSv1.3', null)).toBe('A+');
   });
 
   it('matches Node\'s exact protocol names (TLS 1.0 is "TLSv1")', () => {
@@ -101,6 +126,7 @@ describe('checkSSL against loopback TLS servers', () => {
   let wrongName = 0;
   let tls10Only = 0;
   let everything = 0;
+  let legacyOnly = 0;
 
   beforeAll(async () => {
     const started = await Promise.all([
@@ -108,9 +134,10 @@ describe('checkSSL against loopback TLS servers', () => {
       listen('other-name'),
       listen('loopback', { ...LEGACY_SERVER, minVersion: 'TLSv1', maxVersion: 'TLSv1' }),
       listen('loopback', { ...LEGACY_SERVER, minVersion: 'TLSv1' }),
+      listen('loopback', { ...LEGACY_SERVER, minVersion: 'TLSv1', maxVersion: 'TLSv1.1' }),
     ]);
     servers.push(...started);
-    [modern, wrongName, tls10Only, everything] = started.map(portOf);
+    [modern, wrongName, tls10Only, everything, legacyOnly] = started.map(portOf);
   });
 
   afterAll(() => {
@@ -141,11 +168,11 @@ describe('checkSSL against loopback TLS servers', () => {
     expect(r.securityGrade).toBe('A+');
   });
 
-  it('grades a modern server that still accepts TLS 1.0 by the TLS 1.0 it accepts', async () => {
+  it('caps a modern server that still accepts TLS 1.0 at B, and still lists what it accepts', async () => {
     const r = await checkSSL('127.0.0.1', { port: everything, allowPrivate: true });
     expect(r.tlsVersion).toBe('TLSv1.3');
     expect(r.legacyProtocols).toEqual(['TLSv1', 'TLSv1.1']);
-    expect(r.securityGrade).toBe('D');
+    expect(r.securityGrade).toBe('B');
   });
 
   it('reports a TLS 1.0-only server as legacy rather than failing the check', async () => {
@@ -153,5 +180,12 @@ describe('checkSSL against loopback TLS servers', () => {
     expect(r.tlsVersion).toBe('TLSv1');
     expect(r.legacyProtocols).toEqual(['TLSv1']);
     expect(r.securityGrade).toBe('D');
+  });
+
+  it('grades a server that stops at TLS 1.1 from the TLS 1.1 it negotiates', async () => {
+    const r = await checkSSL('127.0.0.1', { port: legacyOnly, allowPrivate: true });
+    expect(r.tlsVersion).toBe('TLSv1.1');
+    expect(r.legacyProtocols).toEqual(['TLSv1', 'TLSv1.1']);
+    expect(r.securityGrade).toBe('C');
   });
 });

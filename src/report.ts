@@ -1,6 +1,7 @@
 import pc from 'picocolors';
 import type { ScanReport } from './types.js';
 import { compositeScore } from './score.js';
+import { LEGACY_TLS_GRADE_CAP } from './scanners/ssl.js';
 
 function statusIcon(ok: boolean | null): string {
   if (ok === null) return pc.gray('•');
@@ -56,7 +57,13 @@ export function formatText(report: ScanReport): string {
         lines.push(`  ${pc.red('✗')} Certificate is not issued for ${s.hostname}`);
       }
       if (s.legacyProtocols && s.legacyProtocols.length > 0) {
-        lines.push(`  ${warnIcon()} Accepts legacy ${s.legacyProtocols.join(' and ')} — disable everything below TLS 1.2`);
+        // "Disable everything below TLS 1.2" would leave a legacy-only server
+        // with nothing, so it gets the opposite advice.
+        if ((s.legacyProtocols as readonly string[]).includes(s.tlsVersion)) {
+          lines.push(`  ${pc.red('✗')} Speaks nothing newer than ${s.tlsVersion}, which current browsers refuse — enable TLS 1.2 or 1.3`);
+        } else {
+          lines.push(`  ${warnIcon()} Accepts legacy ${s.legacyProtocols.join(' and ')}, which caps the grade at ${LEGACY_TLS_GRADE_CAP} — disable everything below TLS 1.2`);
+        }
       } else if (s.legacyProtocols === null) {
         lines.push(`  ${pc.gray('•')} Legacy TLS 1.0/1.1 support could not be determined`);
       }
@@ -75,7 +82,7 @@ export function formatText(report: ScanReport): string {
   if (report.dnssec) {
     const d = report.dnssec;
     const ok = d.status === 'signed-valid' ? true : d.status === 'unsigned' ? false : null;
-    lines.push(`${statusIcon(ok)} DNSSEC — ${d.status}${d.status === 'unknown' && d.error ? ` (${d.error})` : ''}`);
+    lines.push(`${statusIcon(ok)} DNSSEC — ${d.status}${d.error ? ` (${d.error})` : ''}`);
   }
 
   if (report.email) {

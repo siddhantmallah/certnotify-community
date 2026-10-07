@@ -67,12 +67,37 @@ describe('summariseDnsblResults', () => {
     expect(summariseDnsblResults([entry('listed'), entry('not_listed')]).reputation).toBe('suspicious');
     expect(summariseDnsblResults([entry('listed'), entry('listed'), entry('listed'), entry('error')]).reputation).toBe('blacklisted');
   });
+
+  it('reports unknown, not clean, when fewer than half the lists answered and none listed the address', () => {
+    // 0.5.0 before this called one answer out of four clean.
+    expect(summariseDnsblResults([entry('not_listed'), entry('error'), entry('error'), entry('error')])).toEqual({
+      reputation: 'unknown',
+      listedCount: 0,
+      checkedCount: 1,
+      errorCount: 3,
+    });
+  });
+
+  it('calls the address clean once half the lists answered', () => {
+    expect(summariseDnsblResults([entry('not_listed'), entry('not_listed'), entry('error'), entry('error')]).reputation).toBe('clean');
+    expect(summariseDnsblResults([entry('not_listed'), entry('not_listed'), entry('not_listed'), entry('error')]).reputation).toBe('clean');
+  });
+
+  it('reports a listing however few lists answered', () => {
+    expect(summariseDnsblResults([entry('listed'), entry('error'), entry('error'), entry('error')])).toEqual({
+      reputation: 'suspicious',
+      listedCount: 1,
+      checkedCount: 1,
+      errorCount: 3,
+    });
+  });
 });
 
 /**
  * checkBlacklist end to end against a DNS server on loopback, so a refusal, a
  * real NXDOMAIN and a list that never answers can be staged on demand.
- * For 192.0.2.1 each list behaves differently; for 192.0.2.2 every list fails.
+ * For 192.0.2.1 each list behaves differently; for 192.0.2.2 every list fails;
+ * for 192.0.2.3 only SpamCop answers (not listed). missing.test does not exist.
  */
 describe('checkBlacklist against a local DNS server', () => {
   const originalServers = dns.getServers();
@@ -106,8 +131,10 @@ describe('checkBlacklist against a local DNS server', () => {
 
   function respond(query: Buffer): Buffer | null {
     const name = questionName(query);
-    if (name === '192.0.2.1' || name === '192.0.2.2') return reply(query, 0, [name]);
+    if (name === '192.0.2.1' || name === '192.0.2.2' || name === '192.0.2.3') return reply(query, 0, [name]);
+    if (name === 'missing.test') return reply(query, 3);
     if (name.startsWith('2.2.0.192.')) return reply(query, 2);
+    if (name.startsWith('3.2.0.192.')) return reply(query, name.endsWith('.bl.spamcop.net') ? 3 : 2);
     if (name.endsWith('.zen.spamhaus.org')) return reply(query, 0, ['127.255.255.254']);
     if (name.endsWith('.b.barracudacentral.org')) return reply(query, 0, ['127.0.0.2']);
     if (name.endsWith('.bl.spamcop.net')) return reply(query, 3);
@@ -145,5 +172,16 @@ describe('checkBlacklist against a local DNS server', () => {
     expect(r.checkedCount).toBe(0);
     expect(r.errorCount).toBe(4);
     expect(r.error).toContain('None of the 4 blacklists answered');
+  }, 15000);
+
+  it('reports unknown with an error, not clean, when only one list answers', async () => {
+    const r = await checkBlacklist('192.0.2.3');
+    expect(r).toMatchObject({ reputation: 'unknown', listedCount: 0, checkedCount: 1, errorCount: 3 });
+    expect(r.error).toBe('Only 1 of the 4 blacklists answered, too few to call the address clean');
+  }, 15000);
+
+  it('includes the counts when the name does not resolve', async () => {
+    const r = await checkBlacklist('missing.test');
+    expect(r).toMatchObject({ ip: null, reputation: 'unknown', checkedCount: 0, errorCount: 0, results: [] });
   }, 15000);
 });

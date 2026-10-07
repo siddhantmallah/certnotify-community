@@ -52,11 +52,26 @@ describe('formatText', () => {
     expect(out).toContain('Certificate is not issued for example.com');
   });
 
-  it('shows accepted legacy protocols, and says so when support is unknown', () => {
-    expect(plain(formatText(report({ ssl: ssl({ legacyProtocols: ['TLSv1', 'TLSv1.1'] }) }))))
-      .toContain('Accepts legacy TLSv1 and TLSv1.1');
+  it('shows accepted legacy protocols and the grade cap, and says so when support is unknown', () => {
+    const capped = plain(formatText(report({ ssl: ssl({ legacyProtocols: ['TLSv1', 'TLSv1.1'], securityGrade: 'B' }) })));
+    expect(capped).toContain('TLSv1.3 (grade B)');
+    expect(capped).toContain('⚠ Accepts legacy TLSv1 and TLSv1.1, which caps the grade at B — disable everything below TLS 1.2');
     expect(plain(formatText(report({ ssl: ssl({ legacyProtocols: null }) }))))
       .toContain('Legacy TLS 1.0/1.1 support could not be determined');
+  });
+
+  it('tells a legacy-only server to enable TLS 1.2, not to disable what it has', () => {
+    const out = plain(formatText(report({ ssl: ssl({ tlsVersion: 'TLSv1', legacyProtocols: ['TLSv1'], securityGrade: 'D' }) })));
+    expect(out).toContain('✗ Speaks nothing newer than TLSv1, which current browsers refuse — enable TLS 1.2 or 1.3');
+    expect(out).not.toContain('disable everything below TLS 1.2');
+    expect(out).not.toContain('caps the grade');
+  });
+
+  it('says why a DNSSEC check of a name that does not exist has no status', () => {
+    const out = plain(formatText(report({
+      dnssec: { domain: 'typo.example', status: 'nonexistent', error: 'typo.example does not exist (NXDOMAIN)' } as ScanReport['dnssec'],
+    })));
+    expect(out).toContain('• DNSSEC — nonexistent (typo.example does not exist (NXDOMAIN))');
   });
 
   it('does not count blacklists that never answered as clean', () => {

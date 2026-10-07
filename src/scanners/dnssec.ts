@@ -12,12 +12,15 @@ const EXPLANATIONS: Record<DnssecStatus, string> = {
     'DNSSEC validation failed (SERVFAIL). This may indicate misconfigured DNSSEC records — browsers and resolvers may reject DNS responses.',
   unknown:
     'The DNSSEC status could not be determined because the DNS lookups failed. This is a failure of the check, not a finding about the domain.',
+  nonexistent:
+    'This name does not exist in DNS (NXDOMAIN), so it has no DNSSEC status. Check the spelling, and that the domain is registered and its nameservers are set.',
 };
 
 const DNSKEY = 48;
 const DS = 43;
 const NS = 2;
 const SERVFAIL = 2;
+const NXDOMAIN = 3;
 
 interface DohRecord {
   name?: string;
@@ -42,13 +45,21 @@ async function doHQuery(domain: string, type: string): Promise<DohResponse> {
   return res.json() as Promise<DohResponse>;
 }
 
-function cleanDomain(input: string): string {
-  return input
+/**
+ * Scheme and path off, but `www.` kept, as in ssl.ts. www.example.com is its
+ * own DNS name: often a CNAME into a CDN's zone, sometimes a delegation, and
+ * the answer a resolver validates for it is that chain, not the apex's keys.
+ * Nor is stripping needed for a plain name inside the apex's zone: it has no
+ * DNSKEY of its own, and evaluateDnssec reads it from the AD bit (www.ietf.org
+ * and www.nic.cz are signed-valid, like their apexes). Stripping only `www.`
+ * also checked every other subdomain as itself.
+ */
+export function cleanDomain(input: string): string {
+  return String(input || '')
+    .trim()
     .replace(/^https?:\/\//i, '')
-    .replace(/^www\./i, '')
     .replace(/\/.*$/, '')
-    .toLowerCase()
-    .trim();
+    .toLowerCase();
 }
 
 function recordsOfType(response: DohResponse | null, type: number): DohRecord[] {
@@ -68,7 +79,12 @@ function recordsOfType(response: DohResponse | null, type: number): DohRecord[] 
  * inside a signed zone (mail.ietf.org, www.nic.cz) — no delegation, so no keys
  * of its own — and the resolver could only set AD by validating that zone's
  * signed proof. Its records are signed; calling it unsigned is a false finding.
- * NXDOMAIN is left out: a name that does not exist is not "signed".
+ *
+ * NXDOMAIN on the DNSKEY answer is `nonexistent`: a name that does not exist
+ * is neither signed nor unsigned, and reporting it `unsigned` told someone
+ * with a typo to go and enable DNSSEC. Zones that answer a missing name with
+ * NODATA instead (Cloudflare's signed zones do) are indistinguishable from a
+ * name inside a signed zone here, and read as signed-valid — true of the zone.
  */
 export function evaluateDnssec(
   domain: string,
@@ -86,7 +102,7 @@ export function evaluateDnssec(
   const servfail = dnskey?.Status === SERVFAIL || ds?.Status === SERVFAIL;
   // NOERROR or NXDOMAIN is an answer; a failed request or REFUSED-style rcode
   // is not. Without the DNSKEY answer, "unsigned" would be a guess.
-  const dnskeyAnswered = dnskey !== null && (dnskey.Status === 0 || dnskey.Status === 3);
+  const dnskeyAnswered = dnskey !== null && (dnskey.Status === 0 || dnskey.Status === NXDOMAIN);
 
   const adBit = dnskey?.Status === 0 && dnskey.AD === true;
   const dnssecEnabled = hasDNSKEY || hasDS || adBit;
@@ -95,6 +111,7 @@ export function evaluateDnssec(
   let status: DnssecStatus;
   if (servfail) status = 'error';
   else if (!dnskeyAnswered) status = 'unknown';
+  else if (dnskey.Status === NXDOMAIN) status = 'nonexistent';
   else if (dnssecValid) status = 'signed-valid';
   else if (dnssecEnabled) status = 'signed-unvalidated';
   else status = 'unsigned';
@@ -121,6 +138,8 @@ export function evaluateDnssec(
     result.error = answers.dnskey instanceof Error
       ? `DNSKEY lookup failed: ${describeError(answers.dnskey)}`
       : `DNSKEY lookup returned rcode ${dnskey?.Status}`;
+  } else if (status === 'nonexistent') {
+    result.error = `${domain} does not exist (NXDOMAIN)`;
   }
 
   return result;

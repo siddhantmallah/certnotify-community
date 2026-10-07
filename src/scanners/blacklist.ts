@@ -60,7 +60,11 @@ function queryDnsbl(name: string): Promise<DnsblVerdict> {
   });
 }
 
-/** Errored lists are counted as unchecked, never as clean. */
+/**
+ * Errored lists are counted as unchecked, never as clean. A listing counts
+ * however few lists answered, but `clean` needs at least half of them to have
+ * answered: one list out of four saying "not listed" is not a clean bill.
+ */
 export function summariseDnsblResults(results: BlacklistEntryResult[]): {
   reputation: ReputationStatus | 'unknown';
   listedCount: number;
@@ -73,7 +77,7 @@ export function summariseDnsblResults(results: BlacklistEntryResult[]): {
 
   let reputation: ReputationStatus | 'unknown';
   if (checkedCount === 0) reputation = 'unknown';
-  else if (listedCount === 0) reputation = 'clean';
+  else if (listedCount === 0) reputation = checkedCount * 2 >= results.length ? 'clean' : 'unknown';
   else if (listedCount <= 2) reputation = 'suspicious';
   else reputation = 'blacklisted';
 
@@ -123,6 +127,8 @@ export async function checkBlacklist(rawDomain: string): Promise<BlacklistResult
   const result: BlacklistResult = { domain: hostname, ip, ...summary, results };
   if (summary.checkedCount === 0) {
     result.error = `None of the ${results.length} blacklists answered, so the reputation could not be checked`;
+  } else if (summary.reputation === 'unknown') {
+    result.error = `Only ${summary.checkedCount} of the ${results.length} blacklists answered, too few to call the address clean`;
   }
   return result;
 }

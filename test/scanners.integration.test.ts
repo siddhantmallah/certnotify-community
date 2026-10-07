@@ -34,6 +34,15 @@ describe('checkSSL (live)', () => {
     expect(result.hostname).toBe(TARGET);
     // GitHub turned off TLS 1.0/1.1 in 2018.
     expect(result.legacyProtocols).toEqual([]);
+    expect(result.securityGrade).toBe(result.tlsVersion === 'TLSv1.3' ? 'A+' : 'A');
+  });
+
+  it('caps a modern host that still accepts TLS 1.0 at B instead of grading it D', async () => {
+    // Google keeps TLS 1.0 for old clients. If it stops, this host no longer exercises the cap.
+    const result = await checkSSL('www.google.com');
+    expect(result.tlsVersion).toBe('TLSv1.3');
+    expect(result.legacyProtocols).toContain('TLSv1');
+    expect(result.securityGrade).toBe('B');
   });
 
   it('checks www.<domain> as itself, not as the apex', async () => {
@@ -102,6 +111,18 @@ describe('checkDnssec (live)', () => {
     const result = await checkDnssec(TARGET);
     expect(result.status).toBe('unsigned');
     expect(result.dnssecEnabled).toBe(false);
+  });
+
+  it('checks www.<domain> as itself, and a name inside a signed zone reads signed-valid', async () => {
+    const result = await checkDnssec('www.ietf.org');
+    expect(result.domain).toBe('www.ietf.org');
+    expect(result.status).toBe('signed-valid');
+  });
+
+  it('reports nonexistent for a name that cannot exist (RFC 2606 .invalid)', async () => {
+    const result = await checkDnssec('certnotify-test.invalid');
+    expect(result.status).toBe('nonexistent');
+    expect(result.error).toContain('does not exist');
   });
 });
 

@@ -73,10 +73,22 @@ describe('compositeScore', () => {
     expect(compositeScore(report)).toBe(0);
   });
 
-  it('gives half marks to a trusted certificate on a server that still accepts legacy TLS', () => {
-    expect(compositeScore(baseReport({ ssl: { valid: true, legacyProtocols: ['TLSv1'] } as any }))).toBe(50);
-    expect(compositeScore(baseReport({ ssl: { valid: true, legacyProtocols: [] } as any }))).toBe(100);
+  it('gives half marks to a trusted certificate on a modern server that still accepts legacy TLS', () => {
+    expect(compositeScore(baseReport({ ssl: { valid: true, tlsVersion: 'TLSv1.3', legacyProtocols: ['TLSv1'], securityGrade: 'B' } as any }))).toBe(50);
+    expect(compositeScore(baseReport({ ssl: { valid: true, tlsVersion: 'TLSv1.3', legacyProtocols: [], securityGrade: 'A+' } as any }))).toBe(100);
+    expect(compositeScore(baseReport({ ssl: { valid: true, tlsVersion: 'TLSv1.2', legacyProtocols: [], securityGrade: 'A' } as any }))).toBe(100);
     // Unknown legacy support is not penalised.
-    expect(compositeScore(baseReport({ ssl: { valid: true, legacyProtocols: null } as any }))).toBe(100);
+    expect(compositeScore(baseReport({ ssl: { valid: true, tlsVersion: 'TLSv1.3', legacyProtocols: null, securityGrade: 'A+' } as any }))).toBe(100);
+  });
+
+  it('scores a server that speaks nothing newer than TLS 1.1 like an untrusted certificate', () => {
+    // Current browsers will not connect to these at all; they scored 50, the same as a B.
+    expect(compositeScore(baseReport({ ssl: { valid: true, tlsVersion: 'TLSv1', legacyProtocols: ['TLSv1'], securityGrade: 'D' } as any }))).toBe(0);
+    expect(compositeScore(baseReport({ ssl: { valid: true, tlsVersion: 'TLSv1.1', legacyProtocols: ['TLSv1', 'TLSv1.1'], securityGrade: 'C' } as any }))).toBe(0);
+  });
+
+  it('leaves a DNSSEC check of a name that does not exist out of the score', () => {
+    const report = baseReport({ dnssec: { status: 'nonexistent' } as any, email: { score: 80 } as any });
+    expect(compositeScore(report)).toBe(80);
   });
 });

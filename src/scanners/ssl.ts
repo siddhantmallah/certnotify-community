@@ -23,11 +23,14 @@ function asString(value: string | string[] | undefined, fallback: string): strin
  * concern, and whois.ts does that for itself.
  */
 export function cleanHostname(input: string): string {
+  // Trimmed first and matched case-insensitively: otherwise " https://x" and
+  // "HTTPS://x" kept their scheme, the path strip then cut at "//", and the
+  // check ran against a host called "https:".
   return String(input || '')
-    .replace(/^https?:\/\//, '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
     .replace(/\/.*$/, '')
-    .toLowerCase()
-    .trim();
+    .toLowerCase();
 }
 
 interface Handshake {
@@ -156,7 +159,7 @@ export function summariseLegacyProbes(
   return LEGACY_TLS_VERSIONS.every((version) => outcomes[version] === 'refused') ? [] : null;
 }
 
-const GRADE_ORDER = ['F', 'D', 'C', 'A', 'A+'];
+const GRADE_ORDER = ['F', 'D', 'C', 'B', 'A', 'A+'];
 
 const PROTOCOL_GRADES: Record<string, string> = {
   SSLv2: 'F',
@@ -167,14 +170,28 @@ const PROTOCOL_GRADES: Record<string, string> = {
   'TLSv1.3': 'A+',
 };
 
+/** The best grade a server that still accepts TLS 1.0 or 1.1 can get. */
+export const LEGACY_TLS_GRADE_CAP = 'B';
+
 /**
- * The worst protocol the server accepts sets the grade, not the best one it
- * negotiates: an attacker in the middle gets to pick the version.
+ * SSL Labs' convention: the protocol a modern client negotiates sets the
+ * grade, capped at B while TLS 1.0 or 1.1 is still accepted. A legacy-only
+ * server negotiates its legacy version, so it still grades C or D.
+ *
+ * Grading by the worst accepted version gave www.google.com, which keeps TLS
+ * 1.0 for old clients, the same D as a server that speaks nothing else. The
+ * downgrade argument for doing so does not hold for modern clients: TLS 1.3's
+ * downgrade sentinel and TLS_FALLBACK_SCSV stop an attacker forcing a capable
+ * client down, and current browsers no longer offer TLS 1.0/1.1 at all. The
+ * exposure is the old clients still using them, which is what the cap prices
+ * in. `legacyProtocols` stays on the result as its own finding.
+ *
  * Exact names, not substrings — Node reports TLS 1.0 as `TLSv1`.
  */
 export function gradeTlsProtocols(negotiated: string, legacyProtocols: readonly string[] | null): string {
-  const grades = [negotiated, ...(legacyProtocols ?? [])].map((protocol) => PROTOCOL_GRADES[protocol] ?? 'A');
-  return grades.reduce((worst, grade) => (GRADE_ORDER.indexOf(grade) < GRADE_ORDER.indexOf(worst) ? grade : worst));
+  const grade = PROTOCOL_GRADES[negotiated] ?? 'A';
+  if (!legacyProtocols || legacyProtocols.length === 0) return grade;
+  return GRADE_ORDER.indexOf(grade) > GRADE_ORDER.indexOf(LEGACY_TLS_GRADE_CAP) ? LEGACY_TLS_GRADE_CAP : grade;
 }
 
 function buildResult(hostname: string, h: Handshake, legacyProtocols: LegacyTlsVersion[] | null): SSLResult {

@@ -45,12 +45,18 @@ Every check uses only Node's built-in `tls`/`dns`/`net` modules or free, keyless
 `ssl` makes its normal handshake with Node's defaults (TLS 1.2 or newer, so trust is
 judged the way a modern client judges it), plus one probe each pinned to exactly TLS 1.0
 and TLS 1.1 with `DEFAULT@SECLEVEL=0`. `legacyProtocols` lists the versions the server
-accepted, and the grade comes from the worst of them: TLS 1.1 is C, TLS 1.0 is D.
+accepted.
+
+The grade follows SSL Labs' convention: it comes from the protocol a modern client
+negotiates (TLS 1.3 A+, TLS 1.2 A), **capped at B** while the server still accepts TLS 1.0
+or 1.1. A server that speaks nothing newer is graded from the version it negotiates:
+TLS 1.1 is C, TLS 1.0 is D. To alert on legacy TLS, read `legacyProtocols`, not the grade.
 
 - **Detected** on Node 18+ (OpenSSL 3). Verified on Node 22.19 / OpenSSL 3.0.17 against
   `tls-v1-0.badssl.com:1010` (`["TLSv1"]`, D), `tls-v1-1.badssl.com:1011` (`["TLSv1.1"]`, C),
-  `tls-v1-2.badssl.com:1012` and `github.com` (`[]`). A server that speaks *only* legacy TLS
-  is reported as that version with its grade rather than as a failed handshake.
+  `tls-v1-2.badssl.com:1012` (`[]`, A), `www.google.com` (TLS 1.3, `["TLSv1", "TLSv1.1"]`,
+  B) and `github.com` (TLS 1.3, `[]`, A+). A server that speaks *only* legacy TLS is
+  reported as that version with its grade rather than as a failed handshake.
 - **Unknown, not clean:** when this runtime cannot offer TLS 1.0/1.1 at all (an OpenSSL
   built without them, FIPS mode, a TLS library that rejects the cipher string), or a probe
   times out, `legacyProtocols` is `null`. `[]` is only reported when the server itself
@@ -71,7 +77,9 @@ legacy handshakes can hold it for the full 10-second timeout.
 A DNSBL says "not listed" with NXDOMAIN. Timeouts, resolver failures, and refusal answers
 (`127.255.255.x` — Spamhaus returns these to queries sent through large public resolvers)
 are reported per list as `status: "error"`, counted in `errorCount`, and never as clean.
-If no list answers, `reputation` is `unknown`.
+`reputation` is `clean` only when at least half the lists answered and none listed the
+address; with fewer answers it is `unknown`, and `error` says how many answered. A listing
+is reported however few lists answered. `checkedCount` and `errorCount` are always set.
 
 ## Stateful checks
 
@@ -201,34 +209,45 @@ can get; there is an issue template for exactly that.
     `authorized`, `authorizationError` (Node's code, e.g. `DEPTH_ZERO_SELF_SIGNED_CERT`),
     and `hostnameMatch`, which is checked on its own because Node skips the name check when
     the chain fails.
-  - **`ssl` no longer strips `www.`**: `www.example.com` is checked as itself, and `hostname`
-    in the result is the name checked. It was silently checking the apex certificate.
-  - **`ssl.legacyProtocols`** lists accepted TLS 1.0/1.1 (`[]` none, `null` unknown), and
-    `securityGrade` comes from the worst accepted protocol, so a TLS 1.3 server that still
-    accepts TLS 1.0 grades D. A TLS 1.0-only server now returns a result instead of throwing.
-    Before this, Node's TLS 1.2 floor meant the C and D grades could never fire.
+  - **`ssl` and `dnssec` no longer strip `www.`**: `www.example.com` is checked as itself,
+    and `hostname` / `domain` in the result is the name checked. SSL was silently checking
+    the apex certificate. For DNSSEC, a `www` that is a plain record in the apex's signed
+    zone still reads `signed-valid`; one that is a CNAME into another zone now reports
+    that chain, which is what a resolver validates for the name. `ssl` and `whois` now
+    strip the scheme case-insensitively (`HTTPS://example.com` was looked up as `https:`).
+  - **`ssl.legacyProtocols`** lists accepted TLS 1.0/1.1 (`[]` none, `null` unknown).
+    **`securityGrade`** follows SSL Labs: from the negotiated protocol, capped at B while
+    TLS 1.0/1.1 is accepted, so `www.google.com` (TLS 1.3, still accepts TLS 1.0) is B
+    and a server that speaks only TLS 1.1 or 1.0 is C or D. A legacy-only server now
+    returns a result instead of throwing. Before this, Node's TLS 1.2 floor meant the C
+    and D grades could never fire. The CLI tells a legacy-only server to enable TLS 1.2,
+    not to disable everything below it.
   - **`blacklist` reports per-list `status`** (`listed` / `not_listed` / `error`), `answers`
     and `error`, plus `checkedCount` and `errorCount` on the result. Errors and timeouts
     counted as "not listed" before. Only a `127.0.0.x` answer is a listing; `127.255.255.x`
     and anything else is an error. `listed` is kept and is true only for `listed`. SORBS
     (shut down), MSRBL (defunct) and Abusix (needs a key) are removed, so there are 4 lists,
-    not 7. When no list answers, `reputation` is `unknown` and `error` is set.
-  - **`dnssec` has an `unknown` status** for when the DNSKEY lookup fails; it reported
-    `unsigned`. AD on the DS answer no longer counts: the parent zone sets it on its signed
-    proof that an unsigned domain has no DS (google.se, google.nl), and those domains read
-    as `signed-valid`. Validity now needs AD on the DNSKEY answer, and `adBit` means exactly
-    that. A name inside a signed zone (mail.ietf.org) has no keys of its own but an
-    authenticated DNSKEY answer, and stays `signed-valid`; a name that does not exist
-    (NXDOMAIN) no longer reads as signed.
+    not 7. `reputation` is `clean` only when at least half the lists answered and none
+    listed the address; otherwise (none listed, fewer than half answered) it is `unknown`
+    and `error` is set. One list answering out of four used to read as clean.
+  - **`dnssec` has an `unknown` status** for when the DNSKEY lookup fails, and a
+    **`nonexistent` status** for a name that does not exist (NXDOMAIN, with `error` set);
+    both reported `unsigned`. AD on the DS answer no longer counts: the parent zone sets it
+    on its signed proof that an unsigned domain has no DS (google.se, google.nl), and those
+    domains read as `signed-valid`. Validity now needs AD on the DNSKEY answer, and `adBit`
+    means exactly that. A name inside a signed zone (mail.ietf.org) has no keys of its own
+    but an authenticated DNSKEY answer, and stays `signed-valid`.
   - **`headers` grading**: HSTS directives are parsed (max-age of a year or more is long
     enough, `max-age=0` is bad; `max-age=300` passed as good before); Referrer-Policy
     matches whole tokens (`no-referrer-when-downgrade` was graded good); X-Frame-Options
     `ALLOWALL` is bad; values repeated by a header sent twice are de-duplicated. Each header
     has a `scored` flag, and X-XSS-Protection is reported but no longer scored — it could
     never grade good, so it capped every site at 90.
-  - **Composite score**: an untrusted certificate scores 0, accepting legacy TLS is half
-    marks, and an `unknown` blacklist or DNSSEC result is left out instead of scoring 100
-    and 0 respectively.
+  - **Composite score**: the SSL part follows the grade. An untrusted certificate scores 0,
+    a modern server that still accepts legacy TLS (B) is half marks, and a server that
+    speaks nothing newer than TLS 1.1 (C or D) scores 0, since current browsers will not
+    connect to it. An `unknown` blacklist or DNSSEC result, and a `nonexistent` DNSSEC
+    one, is left out instead of scoring 100 and 0 respectively.
   - The User-Agent is now `certnotify-cli/0.5.0` (it said 0.1/0.2), and `VERSION` is exported.
 - **0.4.1** — `mixed-content` reports only resources the browser loads, not every
   `http://` in the page; `dns-monitor` no longer reports a failed lookup as records changing.

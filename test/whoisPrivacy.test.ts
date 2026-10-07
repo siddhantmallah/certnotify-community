@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { parsePrivacyStatus, extractContactInfo } from '../src/scanners/whoisPrivacy.js';
+import { cleanDomain } from '../src/scanners/whois.js';
+
+describe('cleanDomain (whois)', () => {
+  it('reduces a URL to the domain whatever the case of its scheme and www.', () => {
+    // "HTTPS://…" reached RDAP as "https:".
+    expect(cleanDomain('HTTPS://WWW.Example.com/path')).toBe('example.com');
+    expect(cleanDomain('  https://www.example.com ')).toBe('example.com');
+  });
+});
 
 describe('parsePrivacyStatus', () => {
   it('detects a WhoisGuard-protected domain', () => {

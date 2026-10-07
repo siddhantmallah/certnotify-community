@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateDnssec, type DohResponse } from '../src/scanners/dnssec.js';
+import { cleanDomain, evaluateDnssec, type DohResponse } from '../src/scanners/dnssec.js';
 
 /**
  * Real Cloudflare DNS-over-HTTPS answers, trimmed to the fields read, so each
@@ -20,6 +20,9 @@ const authenticatedNodata: DohResponse = { Status: 0, AD: true };
 
 // example.se: does not exist, and .se proves it.
 const authenticatedNxdomain: DohResponse = { Status: 3, AD: true };
+
+// this-name-does-not-exist-8f3a2c.com: does not exist, under opt-out .com.
+const unauthenticatedNxdomain: DohResponse = { Status: 3, AD: false };
 
 // cloudflare.com
 const signedDnskey: DohResponse = {
@@ -64,8 +67,25 @@ describe('evaluateDnssec', () => {
 
   it('does not read an authenticated NXDOMAIN as signed', () => {
     const r = evaluateDnssec('example.se', { dnskey: authenticatedNxdomain, ds: authenticatedNxdomain, ns });
-    expect(r.status).toBe('unsigned');
+    expect(r.status).not.toBe('signed-valid');
+    expect(r.dnssecEnabled).toBe(false);
     expect(r.adBit).toBe(false);
+  });
+
+  it('reports a name that does not exist as nonexistent, not unsigned', () => {
+    // Was unsigned: a typo came back telling the owner to enable DNSSEC.
+    for (const nx of [authenticatedNxdomain, unauthenticatedNxdomain]) {
+      const r = evaluateDnssec('typo.example', { dnskey: nx, ds: nx, ns: nx });
+      expect(r.status).toBe('nonexistent');
+      expect(r.error).toBe('typo.example does not exist (NXDOMAIN)');
+      expect(r.explanation).toContain('does not exist');
+      expect(r.dnssecValid).toBe(false);
+    }
+  });
+
+  it('still reports SERVFAIL as error when the DNSKEY answer is NXDOMAIN', () => {
+    const r = evaluateDnssec('broken.test', { dnskey: authenticatedNxdomain, ds: { Status: 2 }, ns });
+    expect(r.status).toBe('error');
   });
 
   it('reports a signed, authenticated domain as signed-valid', () => {
@@ -108,5 +128,16 @@ describe('evaluateDnssec', () => {
     const r = evaluateDnssec('example.com', { dnskey: { Status: 5 }, ds: unsignedNodata, ns });
     expect(r.status).toBe('unknown');
     expect(r.error).toContain('rcode 5');
+  });
+});
+
+describe('cleanDomain', () => {
+  it('keeps www., like the SSL check: www.example.com is its own DNS name', () => {
+    expect(cleanDomain('https://www.example.com/path')).toBe('www.example.com');
+  });
+
+  it('strips the scheme whatever its case, and behind whitespace', () => {
+    expect(cleanDomain('HTTPS://Example.com/')).toBe('example.com');
+    expect(cleanDomain('  http://example.com ')).toBe('example.com');
   });
 });

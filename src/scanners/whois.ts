@@ -1,13 +1,15 @@
 import type { WhoisResult } from '../types.js';
 import { describeError } from '../errors.js';
 
+// Case-insensitive and trimmed first, for the same reason as ssl.ts's
+// cleanHostname: "HTTPS://example.com" otherwise reached RDAP as "https:".
 export function cleanDomain(input: string): string {
   return String(input || '')
-    .replace(/^https?:\/\//, '')
-    .replace(/^www\./, '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
     .replace(/\/.*$/, '')
-    .toLowerCase()
-    .trim();
+    .toLowerCase();
 }
 
 async function fetchJsonWithTimeout(url: string, timeoutMs = 12000): Promise<any> {
