@@ -201,6 +201,9 @@ can get; there is an issue template for exactly that.
 
 ## Changelog
 
+- **0.5.1** — **`checkWhois` works again.** rdap.org answers 403 to Node's default
+  `node` User-Agent, so every lookup returned `RDAP_LOOKUP_ERROR`. RDAP requests now send
+  the `certnotify-cli/<version>` User-Agent the other network checks already used.
 - **0.5.0** — **Results now say when a check could not tell, instead of reporting it
   clean.** Behaviour changes for consumers:
   - **`ssl.valid` now includes trust** (`dateValid && authorized`). It was the dates alone,
@@ -272,7 +275,7 @@ can get; there is an issue template for exactly that.
 
 ## Status
 
-`v0.5.0` — public. Live on [npm](https://www.npmjs.com/package/certnotify) and [GitHub](https://github.com/siddhantmallah/certnotify-community). 14 real checks (9 stateless + 5 stateful), a `vitest` suite (unit tests for security-critical/pure logic like the SSRF guard, SPF parsing and the stateful checks' parsing logic, plus live integration tests against real domains — no mocks anywhere), distributed as a CLI, a library, a Docker image and a GitHub Action.
+`v0.5.1` — public. Live on [npm](https://www.npmjs.com/package/certnotify) and [GitHub](https://github.com/siddhantmallah/certnotify-community). 14 real checks (9 stateless + 5 stateful), a `vitest` suite (unit tests for security-critical/pure logic like the SSRF guard, SPF parsing and the stateful checks' parsing logic, plus live integration tests against real domains — no mocks anywhere), distributed as a CLI, a library, a Docker image and a GitHub Action.
 
 The CI workflow is set to manual dispatch rather than running on push: the repo owner's GitHub account is billing-locked (unrelated to this project and not being resolved), so every triggered run fails in two seconds without a runner ever starting. Rather than paint the history red with failures that say nothing about the code, the workflow is parked and `npm run verify` — the same typecheck, build and test steps — is the gate. Flipping the trigger back is a two-line change, documented in the workflow file.
 

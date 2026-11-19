@@ -1,12 +1,25 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { parsePrivacyStatus, extractContactInfo } from '../src/scanners/whoisPrivacy.js';
-import { cleanDomain } from '../src/scanners/whois.js';
+import { cleanDomain, fetchRdapData } from '../src/scanners/whois.js';
+import { USER_AGENT } from '../src/version.js';
 
 describe('cleanDomain (whois)', () => {
   it('reduces a URL to the domain whatever the case of its scheme and www.', () => {
     // "HTTPS://…" reached RDAP as "https:".
     expect(cleanDomain('HTTPS://WWW.Example.com/path')).toBe('example.com');
     expect(cleanDomain('  https://www.example.com ')).toBe('example.com');
+  });
+});
+
+describe('RDAP requests', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('name themselves, because rdap.org answers 403 to the default `node` User-Agent', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await fetchRdapData('example.com');
+    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers['User-Agent']).toBe(USER_AGENT);
   });
 });
 

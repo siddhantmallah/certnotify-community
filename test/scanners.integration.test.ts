@@ -74,7 +74,10 @@ describe('checkWhois (live)', () => {
     expect(Array.isArray(result.nameServers)).toBe(true);
     expect(Array.isArray(result.status)).toBe(true);
     // Public RDAP endpoints occasionally rate-limit automated requests —
-    // only assert on success shape when it actually succeeded.
+    // only assert on success shape when it actually succeeded. A 403 is not
+    // rate-limiting: rdap.org refuses requests that do not name themselves,
+    // which is how a missing User-Agent failed every lookup unnoticed.
+    expect(result.message ?? '').not.toMatch(/\b403\b/);
     if (!result.error) {
       expect(result.nameServers.length).toBeGreaterThan(0);
     }

@@ -1,5 +1,6 @@
 import type { WhoisResult } from '../types.js';
 import { describeError } from '../errors.js';
+import { USER_AGENT } from '../version.js';
 
 // Case-insensitive and trimmed first, for the same reason as ssl.ts's
 // cleanHostname: "HTTPS://example.com" otherwise reached RDAP as "https:".
@@ -18,7 +19,9 @@ async function fetchJsonWithTimeout(url: string, timeoutMs = 12000): Promise<any
   try {
     const response = await fetch(url, {
       method: 'GET',
-      headers: { accept: 'application/rdap+json, application/json' },
+      // rdap.org answers 403 to Node's default `node` User-Agent, so every
+      // lookup failed without a name of our own.
+      headers: { accept: 'application/rdap+json, application/json', 'User-Agent': USER_AGENT },
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`RDAP request failed: ${response.status}`);
